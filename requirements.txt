@@ -1,0 +1,7 @@
+PyMuPDF
+boto3
+pymupdf4llm
+PyPDF2
+python-dotenv
+pypdf
+pgvector
