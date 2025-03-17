@@ -1,7 +1,11 @@
 PyMuPDF
-boto3
 pymupdf4llm
 PyPDF2
-python-dotenv
+pdfplumber
 pypdf
+
+python-dotenv
 pgvector
+psycopg2
+sqlalchemy
+boto3

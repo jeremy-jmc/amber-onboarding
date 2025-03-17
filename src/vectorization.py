@@ -3,6 +3,7 @@ import random
 import json
 import boto3
 import os
+from tqdm import tqdm
 
 load_dotenv('../.env')
 
@@ -109,53 +110,46 @@ How can I split obtain meaningful chunks joining text between pages before split
 idx = random.randint(0, len(all_splits))
 sample_chunk = all_splits[idx]
 
-bedrock_runtime = boto3.client(
-    service_name='bedrock-runtime',
-    region_name='us-east-1'
-)
-
-from llm import embed_call
+from llm import bedrock_runtime, embed_call
 
 chunk_emb: dict = embed_call(bedrock_runtime, sample_chunk.page_content)
 emb = chunk_emb['embedding']
+
+
+all_embs = [
+    embed_call(bedrock_runtime, split.page_content)
+    for split in tqdm(all_splits, total=len(all_splits))
+]
 
 # chunk_emb.keys()
 # chunk_emb['embeddingsByType'].keys()
 # chunk_emb['inputTextTokenCount']
 
+"""
+How can I track the costs of my experiments?
+"""
+
 # -----------------------------------------------------------------------------
 # Save to Vector Database
 # -----------------------------------------------------------------------------
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, Integer, String, Boolean
-from sqlalchemy import select
-from pgvector.sqlalchemy import Vector
-
-
-DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(autoflush=True, bind=engine)
-Session = SessionLocal()
-Base = declarative_base()
-
-class Embedding(Base):
-    __tablename__ = 'embeddings'
-
-    id = Column(Integer, primary_key=True, index=True)
-    page_index = Column(Integer)
-    document_name = Column(String(50))
-    embedding = Column(Vector(1024))
-    page_content = Column(String)
-
-
-Base.metadata.create_all(bind=engine)
+from db import *
 
 """
 https://www.datacamp.com/tutorial/pgvector-tutorial
 """
+
+for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs)):
+    new_embedding = Embedding(
+        page_index=all_splits[idx].metadata['page_index'],
+        document_name='tdr_0.pdf',
+        page_content=all_splits[idx].page_content,
+        embedding=emb['embedding']
+    )
+
+    Session.add(new_embedding)
+Session.commit()
+
 
 new_embedding = Embedding(
     page_index=sample_chunk.metadata['page_index'],
