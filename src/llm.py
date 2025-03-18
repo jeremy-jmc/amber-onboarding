@@ -72,3 +72,32 @@ def claude_call(bedrock: boto3.client,
     return json.loads(response['body'].read().decode('utf-8'))
 
 
+# # -----------------------------------------------------------------------------
+# # LangChain
+# # -----------------------------------------------------------------------------
+
+# # !python3 -m pip install -qU langchain-aws
+
+# from langchain_aws import ChatBedrock
+# from dotenv import load_dotenv
+# import os
+# load_dotenv('../.env')
+
+# llm = ChatBedrock(
+#     model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",
+#     model_kwargs=dict(temperature=0),
+#     region_name=os.getenv("AWS_REGION", "us-east-1"),  # Specify the AWS region
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),  # Load AWS access key
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),  # Load AWS secret key
+# )
+
+# messages = [
+#     (
+#         "system",
+#         "You are a helpful assistant that translates English to French. Translate the user sentence.",
+#     ),
+#     ("human", "I love programming."),
+# ]
+# ai_msg = llm.invoke(messages)
+# ai_msg
+

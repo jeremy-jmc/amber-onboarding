@@ -4,11 +4,14 @@ import json
 import boto3
 import os
 from tqdm import tqdm
+import shutil
+import re
+from langchain_core.documents import Document
 
 load_dotenv('../.env')
 
 
-FILE_PATH = '../data/tdr_v6.pdf'
+FILE_PATH = '../data/tdr_v4.pdf'
 # get file name
 
 # -----------------------------------------------------------------------------
@@ -31,30 +34,30 @@ for d in tqdm(docs, total=len(docs), desc="Saving pages"):
         f.write(d.page_content)
 """
 
-import pymupdf
-import re
-from langchain_core.documents import Document
+# import pymupdf
 
-doc: pymupdf.Document = pymupdf.open(FILE_PATH)
+# doc: pymupdf.Document = pymupdf.open(FILE_PATH)
 
-for page in doc:
-    print(page.get_text())
-    break
+# for page in doc:
+#     print(page.get_text())
+#     break
 
-print(doc.get_page_text(0))
-print(doc.get_page_text(1))
+# print(doc.get_page_text(0))
+# print(doc.get_page_text(1))
 
-docs = [
-    Document(page_content=re.sub(r'(?<!\.)\n(?!\n)', ' ', doc.get_page_text(i)), metadata={"page_index": i + 1})
-    for i in range(len(doc))
-]
+# # re.sub(r'(?<!\.)\n(?!\n)', ' ', doc.get_page_text(i))
+# docs = [
+#     Document(page_content=doc.get_page_text(i), metadata={"page_index": i + 1})
+#     for i in range(len(doc)) if i != 1 # (omitiendo el indice)
+# ]
 
-print(docs[0])
+# print(docs[0])
 
-os.makedirs('../data/page_extraction/pymupdf', exist_ok=True)
-for d in tqdm(docs, total=len(docs), desc="Saving pages"):
-    with open(f'../data/page_extraction/pymupdf/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_index"]}.txt', 'w') as f:
-        f.write(d.page_content)
+# shutil.rmtree('../data/page_extraction/pymupdf', ignore_errors=True)
+# os.makedirs('../data/page_extraction/pymupdf', exist_ok=True)
+# for d in tqdm(docs, total=len(docs), desc="Saving pages"):
+#     with open(f'../data/page_extraction/pymupdf/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_index"]}.txt', 'w') as f:
+#         f.write(d.page_content)
 
 """
 get_text_blocks()
@@ -67,17 +70,47 @@ IDEAS:
 
 """
 
+# # TODO: try DocLing
+# from io import BytesIO
+# from docling.datamodel.base_models import DocumentStream
+# from docling.document_converter import DocumentConverter
 
-"""
+# binary_stream = open(FILE_PATH, 'rb').read()
+# buf = BytesIO(binary_stream)
+# source = DocumentStream(name=FILE_PATH, stream=buf)
+# converter = DocumentConverter()
+# result = converter.convert(source)
+
+
 import pymupdf4llm
+import pathlib
 
 md_text = pymupdf4llm.to_markdown(FILE_PATH)
 
 type(md_text)
 
-import pathlib
-pathlib.Path("output.md").write_bytes(md_text.encode())
-"""
+pathlib.Path(f"../data/{FILE_PATH.replace('.pdf', '')}.md").write_bytes(md_text.encode())
+
+pages_md = md_text.split('\n-----\n')
+print(f"{len(pages_md)=}")
+
+docs = [
+    Document(page_content=p, metadata={"page_index": i + 1})
+    for i, p in enumerate(pages_md)
+    # if i != 1 # (omitiendo el indice)
+]
+
+idx_page = random.randint(0, len(docs))
+sample_page = docs[idx_page]
+
+print(docs[idx_page].page_content)
+
+shutil.rmtree('../data/page_extraction/pymupdf4llm', ignore_errors=True)
+os.makedirs('../data/page_extraction/pymupdf4llm', exist_ok=True)
+for d in tqdm(docs, total=len(docs), desc="Saving pages"):
+    with open(f'../data/page_extraction/pymupdf4llm/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_index"]}.txt', 'w', encoding='utf-8') as f:
+        f.write(d.page_content)
+
 
 # -----------------------------------------------------------------------------
 # Chunking / Splitting
