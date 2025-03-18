@@ -8,14 +8,31 @@ from tqdm import tqdm
 load_dotenv('../.env')
 
 
-FILE_PATH = '../data/tdr_0.pdf'
+FILE_PATH = '../data/tdr_v6.pdf'
+# get file name
+
 # -----------------------------------------------------------------------------
 # Read PDF
 # -----------------------------------------------------------------------------
 
+"""
+from langchain_community.document_loaders import PyPDFLoader
+
+loader = PyPDFLoader(FILE_PATH)
+
+docs = loader.load()
+
+print(docs[0].page_content)
+print(docs[1].page_content)
+
+os.makedirs('../data/page_extraction/pypdf', exist_ok=True)
+for d in tqdm(docs, total=len(docs), desc="Saving pages"):
+    with open(f'../data/page_extraction/pypdf/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_label"]}.txt', 'w') as f:
+        f.write(d.page_content)
+"""
 
 import pymupdf
-# import langchain document object
+import re
 from langchain_core.documents import Document
 
 doc: pymupdf.Document = pymupdf.open(FILE_PATH)
@@ -28,11 +45,16 @@ print(doc.get_page_text(0))
 print(doc.get_page_text(1))
 
 docs = [
-    Document(page_content=doc.get_page_text(i), metadata={"page_index": i + 1})
+    Document(page_content=re.sub(r'(?<!\.)\n(?!\n)', ' ', doc.get_page_text(i)), metadata={"page_index": i + 1})
     for i in range(len(doc))
 ]
 
 print(docs[0])
+
+os.makedirs('../data/page_extraction/pymupdf', exist_ok=True)
+for d in tqdm(docs, total=len(docs), desc="Saving pages"):
+    with open(f'../data/page_extraction/pymupdf/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_index"]}.txt', 'w') as f:
+        f.write(d.page_content)
 
 """
 get_text_blocks()
@@ -57,23 +79,11 @@ import pathlib
 pathlib.Path("output.md").write_bytes(md_text.encode())
 """
 
-
-"""
-from langchain_community.document_loaders import PyPDFLoader
-
-loader = PyPDFLoader(FILE_PATH)
-
-docs = loader.load()
-
-print(docs[0].page_content)
-print(docs[1].page_content)
-"""
-
-
 # -----------------------------------------------------------------------------
 # Chunking / Splitting
 # -----------------------------------------------------------------------------
 
+# https://python.langchain.com/api_reference/text_splitters/character/langchain_text_splitters.character.RecursiveCharacterTextSplitter.html
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 text_splitter = RecursiveCharacterTextSplitter(
@@ -118,7 +128,7 @@ emb = chunk_emb['embedding']
 
 all_embs = [
     embed_call(bedrock_runtime, split.page_content)
-    for split in tqdm(all_splits, total=len(all_splits))
+    for split in tqdm(all_splits, total=len(all_splits), desc="Get embeddings")
 ]
 
 # chunk_emb.keys()
@@ -139,10 +149,11 @@ from db import *
 https://www.datacamp.com/tutorial/pgvector-tutorial
 """
 
-for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs)):
+# Entire document
+for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
     new_embedding = Embedding(
         page_index=all_splits[idx].metadata['page_index'],
-        document_name='tdr_0.pdf',
+        document_name=FILE_PATH,
         page_content=all_splits[idx].page_content,
         embedding=emb['embedding']
     )
@@ -150,15 +161,15 @@ for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs)):
     Session.add(new_embedding)
 Session.commit()
 
-
+"""
+# Individual sample
 new_embedding = Embedding(
     page_index=sample_chunk.metadata['page_index'],
-    document_name='tdr_0.pdf',
+    document_name=FILE_PATH,
     page_content=sample_chunk.page_content,
-    embedding=emb
+    embedding=emb['embedding']
 )
 
 Session.add(new_embedding)
 Session.commit()
-
-
+"""

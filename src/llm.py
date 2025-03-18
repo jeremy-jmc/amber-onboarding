@@ -36,7 +36,7 @@ def embed_call(bedrock: boto3.client, chunk_message: str):
 # LLM
 # -----------------------------------------------------------------------------
 
-def claude_body(prompt: str, query: str):
+def claude_body(system_prompt: str, query: str):
     query = [{
         "role": "user",
         "content": query
@@ -45,19 +45,22 @@ def claude_body(prompt: str, query: str):
     return json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 4090,
-        "system": prompt,
+        "system": system_prompt,
         "messages": query,
         "temperature": 0.0,
 
     })
 
 # Llamada al LLM
+
+
+# https://github.com/amberpe/poc-rag-multidocs/blob/main/prompt.py
 def claude_call(bedrock: boto3.client,
-                user_message: str,
+                system_message: str,
                 query: str,
                 model_id='anthropic.claude-3-5-sonnet-20240620-v1:0'):
 
-    body = claude_body(user_message, query=query)
+    body = claude_body(system_message, query=query)
 
     response = bedrock.invoke_model(
         body=body,
