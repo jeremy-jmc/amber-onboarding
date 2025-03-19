@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 load_dotenv('../.env')
 
 
-FILE_PATH = '../data/tdr_v4.pdf'
+FILE_PATH = '../data/tdr_v6.pdf'
 # get file name
 
 # -----------------------------------------------------------------------------
@@ -85,19 +85,124 @@ IDEAS:
 import pymupdf4llm
 import pathlib
 
-md_text = pymupdf4llm.to_markdown(FILE_PATH)
+md_text = pymupdf4llm.to_markdown(FILE_PATH)    # , page_chunks=True
 
 type(md_text)
+
 
 pathlib.Path(f"../data/{FILE_PATH.replace('.pdf', '')}.md").write_bytes(md_text.encode())
 
 pages_md = md_text.split('\n-----\n')
 print(f"{len(pages_md)=}")
 
+header = [
+    '**Gerencia Central de Tecnologías de Información y Comunicaciones**',
+    'Servicio de Infraestructura, Plataforma y Microservicios en Nube Pública para el despliegue de las Aplicaciones y Nuevos Servicios de la Gerencia',
+    'Central de Tecnologías de Información y Comunicaciones de Essalud',
+]
+
+pages_md = [[v.strip() for v in p.split('\n') if len(v)] for p in pages_md]
+
+filtered_pages_md = [s[:-1] if len(s) > 1 and s[-1].startswith('Página') else s for s in pages_md]
+
+filtered_pages_md = [[v.strip() for v in s if v not in header] for s in filtered_pages_md]
+
+# TODO: join text that not ends with '.' with the next one unless that the next sentence starts with any type of enumeration like '1.', 'a.', 'i.', etc.
+
+def get_sections(page: list[str]) -> list[str]:
+    """Get the sentences representing sections in the current page
+
+    Args:
+        page (list[str]): List of sentences in the current page
+    
+    Docs:
+        A section is represented by a sentence envolved between '**' characters and started with any type of enumeration like '1.', 'a.', 'i.', 'I.', etc.
+
+        Positive cases:
+            - **3.** **ANTECEDENTES**
+            - **4.2. Objetivo Especifico**
+
+        Negative cases:
+            - **Servicio Web Application Firewall**
+            - b. El servicio debe permitir crear reglas que bloquean ataques comunes como la inyección de SQL, cross-site scripting, etc.
+    """
+    roman_pattern = re.compile(r"^\s*(I{1,3}|IV|V|VI{0,3}|IX|X)\.\s+")
+    enumeration_pattern = re.compile(r"^\s*((I{1,3}|IV|V|VI{0,3}|IX|X)|\d+(\.\d+)*)\.\s+")
+    
+    filtered_sentences = [(s.replace("*", ''), s) for s in page if (s.startswith('**') and s.endswith('**')) or bool(roman_pattern.match(s))]  # 
+    
+    filtered_sentences = [tup for tup in filtered_sentences if enumeration_pattern.match(tup[0])]
+    return filtered_sentences
+
+def split_text_by_headings(full_text, headings_list):
+    """
+    Divide un texto completo en secciones basadas en una lista de subtítulos.
+    
+    Args:
+        full_text (str): El texto completo a dividir
+        headings_list (list): Lista de subtítulos para usar como puntos de división
+        
+    Returns:
+        dict: Un diccionario donde las claves son los subtítulos y los valores son los contenidos
+    """
+    # Ordenar los encabezados por su posición en el texto
+    # Esto es crucial porque necesitamos procesar los encabezados en el orden en que aparecen
+    heading_positions = {}
+    for heading in headings_list:
+        # Escapar caracteres especiales de regex en el encabezado
+        escaped_heading = re.escape(heading)
+        match = re.search(escaped_heading, full_text)
+        if match:
+            heading_positions[heading] = match.start()
+    
+    # Ordenar los encabezados por posición
+    sorted_headings = sorted(heading_positions.keys(), key=lambda x: heading_positions[x])
+    
+    # Crear los chunks de texto
+    chunks = {}
+    for i in range(len(sorted_headings)):
+        current_heading = sorted_headings[i]
+        
+        # Determinar dónde termina esta sección (inicio de la siguiente sección)
+        start_pos = heading_positions[current_heading]
+        
+        if i < len(sorted_headings) - 1:
+            next_heading = sorted_headings[i + 1]
+            end_pos = heading_positions[next_heading]
+        else:
+            end_pos = len(full_text)
+        
+        # Extraer el contenido de esta sección
+        content = full_text[start_pos:end_pos].strip()
+        chunks[current_heading] = content
+    
+    return chunks
+
+
+sections = [get_sections(page) for page in filtered_pages_md]
+cleaned_pages = '\n\n\n'.join(['\n'.join(ls) for ls in filtered_pages_md if len(ls) > 1])
+
+with open('../data/cleaned_pages.md', 'w', encoding='utf-8') as f:
+    f.write(cleaned_pages)
+
+original_splitters = [s for tup_list in sections for f, s in tup_list]
+
+# ! chunks no incluyen la caratula por la naturaleza de las secciones
+chunks = split_text_by_headings(cleaned_pages, original_splitters)
+
+for tup in sections:
+    if len(tup):
+        print([f for f, s in tup])
+
+print(json.dumps(chunks, indent=2, ensure_ascii=False))
+
+
 docs = [
-    Document(page_content=p, metadata={"page_index": i + 1})
-    for i, p in enumerate(pages_md)
-    # if i != 1 # (omitiendo el indice)
+    # Document(page_content=p, metadata={"page_index": i + 1})
+    # for i, p in enumerate(pages_md)
+    # # if i != 1 # (omitiendo el indice)
+    Document(page_content=v, metadata={"section": k})
+    for idx, (k, v) in enumerate(chunks.items())
 ]
 
 idx_page = random.randint(0, len(docs))
@@ -107,8 +212,8 @@ print(docs[idx_page].page_content)
 
 shutil.rmtree('../data/page_extraction/pymupdf4llm', ignore_errors=True)
 os.makedirs('../data/page_extraction/pymupdf4llm', exist_ok=True)
-for d in tqdm(docs, total=len(docs), desc="Saving pages"):
-    with open(f'../data/page_extraction/pymupdf4llm/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_index"]}.txt', 'w', encoding='utf-8') as f:
+for idx, d in tqdm(enumerate(docs), total=len(docs), desc="Saving pages"):
+    with open(f'../data/page_extraction/pymupdf4llm/{os.path.basename(FILE_PATH).replace(".pdf", "")}_chunk_{idx}.txt', 'w', encoding='utf-8') as f:
         f.write(d.page_content)
 
 
@@ -119,8 +224,9 @@ for d in tqdm(docs, total=len(docs), desc="Saving pages"):
 # https://python.langchain.com/api_reference/text_splitters/character/langchain_text_splitters.character.RecursiveCharacterTextSplitter.html
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+# TODO: entender bien como funciona el splitter. Chunk 9 y 10 no se overlapean
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000, chunk_overlap=200, add_start_index=True
+    chunk_size=1000, chunk_overlap=300, add_start_index=True
 )
 
 all_splits = []
@@ -185,7 +291,8 @@ https://www.datacamp.com/tutorial/pgvector-tutorial
 # Entire document
 for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
     new_embedding = Embedding(
-        page_index=all_splits[idx].metadata['page_index'],
+        # page_index=all_splits[idx].metadata['page_index'],
+        page_section=all_splits[idx].metadata['section'],
         document_name=FILE_PATH,
         page_content=all_splits[idx].page_content,
         embedding=emb['embedding']

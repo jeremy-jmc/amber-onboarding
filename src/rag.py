@@ -8,7 +8,7 @@ from db import *
 def search_similar_text(query, top_k=5) -> list[tuple]:
     query_embedding = embed_call(bedrock_runtime, query)
     return Session.execute(
-        select(Embedding.document_name, Embedding.page_index, Embedding.page_content)
+        select(Embedding.document_name, Embedding.page_section, Embedding.page_content)
         .order_by(
             Embedding.embedding.cosine_distance(query_embedding['embedding'])
         ).limit(top_k)
@@ -88,8 +88,8 @@ for query in questions:
     context_format = """<contexto>\n{entries}\n</contexto>""".strip()
     
     entries = "\n".join([
-        f"    <{os.path.splitext(os.path.basename(doc))[0]}>\n        {pg_cntnt}\n        <pagina>{pg_indx}</pagina>\n    </{os.path.splitext(os.path.basename(doc))[0]}>"
-        for doc, pg_indx, pg_cntnt in retrieved_docs
+        f"    <{os.path.splitext(os.path.basename(doc))[0]}>\n        <section>{pg_section}</section>\n        {pg_cntnt}\n    </{os.path.splitext(os.path.basename(doc))[0]}>"
+        for doc, pg_section, pg_cntnt in retrieved_docs
     ])
     
     context = context_format.format(entries=entries)
@@ -100,12 +100,11 @@ for query in questions:
     # print(prompt)
 
 
-response = claude_call(bedrock_runtime, system_prompt, prompt)
+    response = claude_call(bedrock_runtime, system_prompt, prompt.format(context=context, query=query))
+    # print(json.dumps(response['content'], indent=2, ensure_ascii=False))
 
-print(json.dumps(response['content'], indent=2, ensure_ascii=False))
-
-with open('../data/response.json', 'w') as f:
-    f.write(json.dumps(response, indent=2, ensure_ascii=False))
+    with open(f'../data/response-{query_normalized}.json', 'w') as f:
+        f.write(json.dumps(response, indent=2, ensure_ascii=False))
 
 # return prompt
 

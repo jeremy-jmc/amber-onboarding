@@ -17,7 +17,8 @@ class Embedding(Base):
     __tablename__ = 'embeddings'
 
     id = Column(Integer, primary_key=True, index=True)
-    page_index = Column(Integer)
+    # page_index = Column(Integer)
+    page_section = Column(String(250))
     document_name = Column(String(50))
     embedding = Column(Vector(1024))
     page_content = Column(String)
