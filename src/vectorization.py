@@ -7,11 +7,13 @@ from tqdm import tqdm
 import shutil
 import re
 from langchain_core.documents import Document
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
 
 load_dotenv('../.env')
 
 
-FILE_PATH = '../data/tdr_v6.pdf'
+FILE_PATH = '../data/tdr_v4.pdf'
 # get file name
 
 # -----------------------------------------------------------------------------
@@ -107,7 +109,6 @@ filtered_pages_md = [s[:-1] if len(s) > 1 and s[-1].startswith('Página') else s
 
 filtered_pages_md = [[v.strip() for v in s if v not in header] for s in filtered_pages_md]
 
-# TODO: join text that not ends with '.' with the next one unless that the next sentence starts with any type of enumeration like '1.', 'a.', 'i.', etc.
 
 def get_sections(page: list[str]) -> list[str]:
     """Get the sentences representing sections in the current page
@@ -133,6 +134,7 @@ def get_sections(page: list[str]) -> list[str]:
     
     filtered_sentences = [tup for tup in filtered_sentences if enumeration_pattern.match(tup[0])]
     return filtered_sentences
+
 
 def split_text_by_headings(full_text, headings_list):
     """
@@ -179,42 +181,110 @@ def split_text_by_headings(full_text, headings_list):
     return chunks
 
 
-sections = [get_sections(page) for page in filtered_pages_md]
-cleaned_pages = '\n\n\n'.join(['\n'.join(ls) for ls in filtered_pages_md if len(ls) > 1])
+def get_section_to_root_path(tree: dict, section: str) -> list[str]:
+    """Get the path from the root to the current section
 
-with open('../data/cleaned_pages.md', 'w', encoding='utf-8') as f:
-    f.write(cleaned_pages)
+    Args:
+        tree (dict): The tree structure
+        section (str): The current section
+    
+    Returns:
+        list[str]: The path from the root to the current section
+    """
+    path = []
+    for k, v in tree.items():
+        if k == section:
+            return [k]
+        elif isinstance(v, dict):
+            path = get_section_to_root_path(v, section)
+            if path:
+                return [k] + path
+    return path
 
-original_splitters = [s for tup_list in sections for f, s in tup_list]
 
-# ! chunks no incluyen la caratula por la naturaleza de las secciones
-chunks = split_text_by_headings(cleaned_pages, original_splitters)
+def parse_root_path_to_xml(root_path: list) -> str:
+    hierarchy = '\n'.join([i * '\t' + v for i, v in enumerate(root_path)])
+    return f"<index>\n{hierarchy}\n<index>"
+
+
+def create_index_xml(path_list: list) -> str:   # , chunk_content: str
+    root = ET.Element("index")
+
+    current_node = root
+
+    for level, section in enumerate(path_list, start=1):
+        subsection = ET.SubElement(current_node, "subsection", title=section, level=str(level))
+        current_node = subsection
+
+    # current_node.text = f"\n{chunk_content}\n"
+
+    rough_string = ET.tostring(root, encoding="unicode")
+    reparsed = xml.dom.minidom.parseString(rough_string)
+
+    return reparsed.toprettyxml(indent="\t", newl='\n').replace('<?xml version="1.0" ?>\n', '')
+
+
+sections = [get_sections(page) for idx, page in enumerate(filtered_pages_md) if idx > 1]
 
 for tup in sections:
     if len(tup):
         print([f for f, s in tup])
 
-print(json.dumps(chunks, indent=2, ensure_ascii=False))
+cleaned_pages = ['\n'.join(ls) for ls in filtered_pages_md if len(ls) > 1]
 
+print(f"{len(cleaned_pages)=}")
+cleaned_doc: str = '\n\n\n'.join(cleaned_pages)
+
+with open(f'../data/cleaned_doc_{os.path.basename(FILE_PATH).replace(".pdf", "")}.md', 'w', encoding='utf-8') as f:
+    f.write(cleaned_doc)
+
+original_tups = [t for tup_list in sections for t in tup_list]
+section_mapping_original_to_clean = {s: f for f, s in original_tups}
+original_splitters = [s for f, s in original_tups]
+
+print(f"{len(original_splitters)=}")
+
+# ! manually created tree, bc there are only two documents to compare
+tree = json.loads(open(f'../data/tree_{os.path.basename(FILE_PATH).replace(".pdf", "")}.json', 'r').read())
+print(json.dumps(tree, indent=2, ensure_ascii=False))
+
+# ! chunks no incluyen la caratula por la naturaleza de las secciones
+sectioned_chunks = split_text_by_headings(cleaned_doc, original_splitters)
+print(f"{len(sectioned_chunks)=}")
+
+# filtered empty sections
+sectioned_chunks = {k: v for k, v in sectioned_chunks.items() if len(v.replace(k, ''))}
+print(json.dumps(sectioned_chunks, indent=2, ensure_ascii=False))
+
+for k, v in sectioned_chunks.items():
+    print(k, len(v))
 
 docs = [
     # Document(page_content=p, metadata={"page_index": i + 1})
     # for i, p in enumerate(pages_md)
     # # if i != 1 # (omitiendo el indice)
-    Document(page_content=v, metadata={"section": k})
-    for idx, (k, v) in enumerate(chunks.items())
+    Document(page_content=v, metadata={"section": get_section_to_root_path(tree, section_mapping_original_to_clean[k])})
+    for idx, (k, v) in enumerate(sectioned_chunks.items())
 ]
+for d in docs:
+    d.metadata['xml_header'] = create_index_xml(d.metadata['section'])
 
-idx_page = random.randint(0, len(docs))
-sample_page = docs[idx_page]
+check = True
+if check:
+    idx_page = random.randint(0, len(docs) - 1)
+    sample_page = docs[idx_page]
 
-print(docs[idx_page].page_content)
+    # print(sample_page.metadata)
+    # print(json.dumps(sample_page.metadata, indent=2, ensure_ascii=False))
+
+    print(f"{sample_page.metadata['xml_header']}<content>\n{sample_page.page_content}\n</content>")
+
 
 shutil.rmtree('../data/page_extraction/pymupdf4llm', ignore_errors=True)
 os.makedirs('../data/page_extraction/pymupdf4llm', exist_ok=True)
 for idx, d in tqdm(enumerate(docs), total=len(docs), desc="Saving pages"):
     with open(f'../data/page_extraction/pymupdf4llm/{os.path.basename(FILE_PATH).replace(".pdf", "")}_chunk_{idx}.txt', 'w', encoding='utf-8') as f:
-        f.write(d.page_content)
+        f.write(f"{d.metadata['section']}\n\n{d.page_content}")
 
 
 # -----------------------------------------------------------------------------
@@ -224,27 +294,33 @@ for idx, d in tqdm(enumerate(docs), total=len(docs), desc="Saving pages"):
 # https://python.langchain.com/api_reference/text_splitters/character/langchain_text_splitters.character.RecursiveCharacterTextSplitter.html
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# TODO: entender bien como funciona el splitter. Chunk 9 y 10 no se overlapean
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000, chunk_overlap=300, add_start_index=True
+    chunk_size=1000, chunk_overlap=250, add_start_index=True
 )
 
-all_splits = []
-for doc in docs:
-    splits = text_splitter.split_text(doc.page_content)  # Splitting content
-    for split in splits:
-        all_splits.append({
-            "page_content": split,
-            "metadata": doc.metadata  # Preserve original metadata (page number)
-        })
+all_splits = text_splitter.split_documents(docs)
 
 # all_splits = text_splitter.split_documents(docs)
 
-all_splits = [Document(page_content=split['page_content'], metadata=split['metadata']) for split in all_splits]
+# all_splits = []
+# for doc in docs:
+#     splits = text_splitter.split_text(doc.page_content)  # Splitting content
+#     for split in splits:
+#         all_splits.append({
+#             "page_content": split,
+#             "metadata": doc.metadata  # Preserve original metadata (page number/page hierarchy)
+#         })
+# all_splits = [Document(page_content=split['page_content'], metadata=split['metadata']) for split in all_splits]
 
 print(len(all_splits))
-
+print(dir(all_splits[0]))
 print(all_splits[5].page_content)
+print(json.dumps(all_splits[5].metadata, indent=2, ensure_ascii=False))
+
+# for idx, split in enumerate(all_splits):
+#     print(f"{split.metadata['xml_header']}<content>\n{split.page_content}\n</content>\n\n")
+#     if idx > 25:
+#         break
 
 """
 Study more about the Splitters algorithms/methods.
@@ -256,23 +332,20 @@ How can I split obtain meaningful chunks joining text between pages before split
 # Embedding
 # ----------------------------------------------------------------------------- 
 
-idx = random.randint(0, len(all_splits))
-sample_chunk = all_splits[idx]
-
 from llm import bedrock_runtime, embed_call
 
-chunk_emb: dict = embed_call(bedrock_runtime, sample_chunk.page_content)
-emb = chunk_emb['embedding']
-
-
 all_embs = [
-    embed_call(bedrock_runtime, split.page_content)
+    embed_call(bedrock_runtime, f"{split.metadata['xml_header']}<content>\n{split.page_content}\n</content>")
     for split in tqdm(all_splits, total=len(all_splits), desc="Get embeddings")
 ]
 
-# chunk_emb.keys()
-# chunk_emb['embeddingsByType'].keys()
-# chunk_emb['inputTextTokenCount']
+# idx = random.randint(0, len(all_splits))
+# sample_chunk = all_splits[idx]
+# chunk_emb: dict = embed_call(bedrock_runtime, sample_chunk.page_content)
+# # chunk_emb.keys()
+# # chunk_emb['embeddingsByType'].keys()
+# # chunk_emb['inputTextTokenCount']
+# emb = chunk_emb['embedding']
 
 """
 How can I track the costs of my experiments?
@@ -292,9 +365,9 @@ https://www.datacamp.com/tutorial/pgvector-tutorial
 for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
     new_embedding = Embedding(
         # page_index=all_splits[idx].metadata['page_index'],
-        page_section=all_splits[idx].metadata['section'],
+        page_section=all_splits[idx].metadata['section'][-1],
         document_name=FILE_PATH,
-        page_content=all_splits[idx].page_content,
+        page_content=f"{all_splits[idx].metadata['xml_header']}<content>\n{all_splits[idx].page_content}\n</content>",
         embedding=emb['embedding']
     )
 

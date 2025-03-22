@@ -17,9 +17,7 @@ def embed_body(chunk_message: str):
     })
 
 # Llamada al modelo de embedding
-def embed_call(bedrock: boto3.client, chunk_message: str):
-
-    model_id = "amazon.titan-embed-text-v2:0"
+def embed_call(bedrock: boto3.client, chunk_message: str, model_id: str = "amazon.titan-embed-text-v2:0"):
     body = embed_body(chunk_message)
 
     response = bedrock.invoke_model(
@@ -55,6 +53,7 @@ def claude_body(system_prompt: str, query: str):
 
 
 # https://github.com/amberpe/poc-rag-multidocs/blob/main/prompt.py
+# https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
 def claude_call(bedrock: boto3.client,
                 system_message: str,
                 query: str,

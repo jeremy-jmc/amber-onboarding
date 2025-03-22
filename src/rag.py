@@ -39,11 +39,13 @@ Contenido asd asd asd
 
 # Prompt Improver: https://console.anthropic.com/dashboard
 questions = [
-# Chunk question
-    'g.\nEl servicio debe permitir asociar una o más direcciones IP elásticas a cualquier\ninstancia\nde\nla\nnube\nprivada\nvirtual,\nde modo que puedan alcanzarse\ndirectamente desde Internet.\nh.\nEl servicio debe permitir conectarse a la nube privada virtual con otras nubes\nprivadas virtuales y obtener acceso a los recursos de otras nubes privadas\nvirtuales a través de direcciones IP privadas mediante la interconexión de nube\nprivada virtual.\ni.\nEl servicio debe permitir conectarse de manera privada a los servicios del\nfabricante de la nube pública sin usar una gateway de Internet, ni una NAT ni\nun proxy de firewall mediante un punto de enlace de la nube privada virtual.\nj.\nEl servicio debe permitir conectar la nube privada virtual y la infraestructura de\nTI local con la VPN del fabricante de la nube pública de sitio a sitio.\nk.\nEl servicio debe permitir asociar grupos de seguridad de la nube privada virtual\ncon instancias en la plataforma.\nl.',
+# # Chunk question
+#     'g.\nEl servicio debe permitir asociar una o más direcciones IP elásticas a cualquier\ninstancia\nde\nla\nnube\nprivada\nvirtual,\nde modo que puedan alcanzarse\ndirectamente desde Internet.\nh.\nEl servicio debe permitir conectarse a la nube privada virtual con otras nubes\nprivadas virtuales y obtener acceso a los recursos de otras nubes privadas\nvirtuales a través de direcciones IP privadas mediante la interconexión de nube\nprivada virtual.\ni.\nEl servicio debe permitir conectarse de manera privada a los servicios del\nfabricante de la nube pública sin usar una gateway de Internet, ni una NAT ni\nun proxy de firewall mediante un punto de enlace de la nube privada virtual.\nj.\nEl servicio debe permitir conectar la nube privada virtual y la infraestructura de\nTI local con la VPN del fabricante de la nube pública de sitio a sitio.\nk.\nEl servicio debe permitir asociar grupos de seguridad de la nube privada virtual\ncon instancias en la plataforma.\nl.',
+
 # Cross document question
     '¿Cual es la finalidad publica de los documentos?',
     '¿Cuales son los objetivos generales y especificos de la contratacion en los documentos?',
+    '¿Cuál es el porcentaje mínimo de disponibilidad que debe tener la infraestructura de Nube Pública?',
 ]
 
 system_prompt = """
@@ -57,9 +59,9 @@ Primero, te presentaré el contexto sobre el cual se basará la pregunta:
 
 Ahora, te haré una pregunta relacionada con este contexto. Tu objetivo es responder a esta pregunta utilizando únicamente la información proporcionada en el contexto anterior.
 
-<pregunta>
+<PREGUNTA>
 {query}
-</pregunta>
+</PREGUNTA>
 
 Para asegurar una respuesta precisa y bien fundamentada, sigue estos pasos:
 
@@ -78,35 +80,46 @@ Recuerda:
 Comienza tu proceso de razonamiento y respuesta ahora.
 """
 
+call_claude = False
+k = 3
+
 for query in questions:
     query_normalized = query.replace('¿', '').replace('?', '').replace(' ', '_').lower()
     query_normalized = ''.join(e for e in query_normalized if e.isalnum() or e == '_')[:50]
     print(f"{query_normalized=}")
 
-    retrieved_docs = search_similar_text(query, 5)
+    retrieved_docs = search_similar_text(query, k)
 
-    context_format = """<contexto>\n{entries}\n</contexto>""".strip()
+    context_format = """<CONTEXT>\n{entries}\n</CONTEXT>""".strip()
+    
+
+    def format_pg_section(doc, pg_section, pg_cntnt) -> str:
+        tag = os.path.splitext(os.path.basename(doc))[0].upper()
+        return f"\n\t<{tag}_CHUNK>\n<TAG>{pg_section}</TAG>\n{pg_cntnt}\n\t</{tag}_CHUNK>\n"
+        
     
     entries = "\n".join([
-        f"    <{os.path.splitext(os.path.basename(doc))[0]}>\n        <section>{pg_section}</section>\n        {pg_cntnt}\n    </{os.path.splitext(os.path.basename(doc))[0]}>"
+        format_pg_section(doc, pg_section, pg_cntnt)
         for doc, pg_section, pg_cntnt in retrieved_docs
     ])
     
     context = context_format.format(entries=entries)
 
     # print(context)
-    with open(f'../data/prompt-{query_normalized}.txt', 'w') as f:
+    with open(f'../data/prompt-{k}-{query_normalized}.txt', 'w') as f:
         f.write(prompt.format(context=context, query=query))
     # print(prompt)
 
+    if call_claude:
+        response = claude_call(bedrock_runtime, system_prompt, prompt.format(context=context, query=query))
+        # print(json.dumps(response['content'], indent=2, ensure_ascii=False))
 
-    response = claude_call(bedrock_runtime, system_prompt, prompt.format(context=context, query=query))
-    # print(json.dumps(response['content'], indent=2, ensure_ascii=False))
+        with open(f'../data/response-{k}-{query_normalized}.json', 'w') as f:
+            f.write(json.dumps(response, indent=2, ensure_ascii=False))
 
-    with open(f'../data/response-{query_normalized}.json', 'w') as f:
-        f.write(json.dumps(response, indent=2, ensure_ascii=False))
+        with open(f'../data/response-{k}-{query_normalized}.txt', 'w') as f:
+            f.write(response['content'][0]['text'])
 
-# return prompt
 
 
 """
