@@ -20,8 +20,8 @@ def search_similar_text(query, top_k=5) -> list[tuple]:
     return Session.execute(
         select(
             Embedding.document_name,
-            Embedding.page_section,
-            Embedding.page_content,
+            Embedding.section_name,
+            Embedding.chunk_content,
             Embedding.embedding.cosine_distance(query_embedding['embedding']).label('cosine_distance')
         )
         .order_by(
@@ -61,6 +61,8 @@ Contenido asd asd asd
 </Context>
 """
 
+# TODO: levantar BD de las secciones y traerte las secciones enteras para presentarlas en el contexto
+
 # Prompt Improver: https://console.anthropic.com/dashboard
 qa = [
 # # * Chunk question
@@ -92,6 +94,8 @@ qa = [
     # ! MASO FALLA -> No mejora con "De acuerdo ..."
     ("De acuerdo a la sección 5. ¿Quién será responsable de administrar la consola de los servicios de Infraestructura?",
         "La consola será manejada por el Especialista asignado por la Sub Gerencia de Operaciones de Tecnologías de Información de la Gerencia de Producción de la GCTIC."),
+
+    # TODO: preguntas acerca de Anexos
 ]
 
 system_prompt = """
@@ -125,6 +129,9 @@ Recuerda:
 
 Comienza tu proceso de razonamiento y respuesta ahora.
 """
+
+shutil.rmtree('../data/qa', ignore_errors=True)
+os.makedirs('../data/qa', exist_ok=True)
 
 call_claude = True
 k = 5       # 5 mejor que 3, 10 mejor que 5 pero no sustancial

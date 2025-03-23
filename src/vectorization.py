@@ -9,6 +9,7 @@ import re
 from langchain_core.documents import Document
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
+from db import *
 
 load_dotenv('../.env')
 
@@ -247,6 +248,11 @@ print(json.dumps(tree, indent=2, ensure_ascii=False))
 sectioned_chunks = split_text_by_headings(cleaned_doc, original_splitters)
 print(f"{len(sectioned_chunks)=}")
 
+for section, section_content in sectioned_chunks.items():
+    record = DocumentSection(document_name=FILE_PATH, section_name=section, section_content=section_content)
+    Session.add(record)
+Session.commit()
+
 # filtered empty sections
 sectioned_chunks = {k: v for k, v in sectioned_chunks.items() if len(v.replace(k, ''))}
 print(json.dumps(sectioned_chunks, indent=2, ensure_ascii=False))
@@ -356,8 +362,6 @@ How can I track the costs of my experiments?
 # Save to Vector Database
 # -----------------------------------------------------------------------------
 
-from db import *
-
 """
 https://www.datacamp.com/tutorial/pgvector-tutorial
 """
@@ -366,9 +370,9 @@ https://www.datacamp.com/tutorial/pgvector-tutorial
 for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
     new_embedding = Embedding(
         # page_index=all_splits[idx].metadata['page_index'],
-        page_section=all_splits[idx].metadata['section'][-1],
+        section_name=all_splits[idx].metadata['section'][-1],
         document_name=FILE_PATH,
-        page_content=format_chunk_content(all_splits[idx]),
+        chunk_content=format_chunk_content(all_splits[idx]),
         embedding=emb['embedding']
     )
 

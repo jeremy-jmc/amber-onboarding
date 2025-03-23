@@ -18,10 +18,19 @@ class Embedding(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     # page_index = Column(Integer)
-    page_section = Column(String(250))
+    section_name = Column(String(250))
     document_name = Column(String(50))
     embedding = Column(Vector(1024))
-    page_content = Column(String)
+    chunk_content = Column(String)
+
+
+class DocumentSection(Base):
+    __tablename__ = 'document_sections'
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_name = Column(String(50))
+    section_name = Column(String(250))
+    section_content = Column(String)
 
 
 Base.metadata.create_all(bind=engine)
