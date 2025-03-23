@@ -249,7 +249,7 @@ sectioned_chunks = split_text_by_headings(cleaned_doc, original_splitters)
 print(f"{len(sectioned_chunks)=}")
 
 for section, section_content in sectioned_chunks.items():
-    record = DocumentSection(document_name=FILE_PATH, section_name=section, section_content=section_content)
+    record = DocumentSection(document_name=FILE_PATH, section_name=section_mapping_original_to_clean[section], section_content=section_content)
     Session.add(record)
 Session.commit()
 

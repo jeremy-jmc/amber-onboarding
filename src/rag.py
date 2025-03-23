@@ -138,11 +138,33 @@ k = 5       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
 
 df = []
 for question, answer in tqdm(qa, total=len(qa)):
-    retrieved_docs = search_similar_text(question, k)
+    retrieved_rag = search_similar_text(question, k)
     context_format = """<CONTEXT>\n{entries}\n</CONTEXT>""".strip()
     
-    # display(pd.DataFrame(copy.deepcopy(list(retrieved_docs)), columns=['doc', 'pg_section', 'pg_cntnt', 'cosine_distance']))
-    # assert len(list(retrieved_docs)) > 0, f"No se encontraron documentos similares para la pregunta: {question}"
+    df_rag = pd.DataFrame(copy.deepcopy(list(retrieved_rag)), columns=['doc', 'section_name', 'section_cntnt', 'cosine_distance'])
+    query_df = df_rag[['doc', 'section_name']].drop_duplicates(subset=['section_name'], keep='first')
+
+    retrieved_docs = Session.execute(
+        select(
+            DocumentSection.document_name,
+            DocumentSection.section_name,
+            DocumentSection.section_content
+        ).where(
+            # TODO: improve way to query
+            DocumentSection.section_name.in_(query_df['section_name'].tolist()),
+            DocumentSection.document_name.in_(query_df['doc'].tolist())
+        )
+    ).all()
+
+    # Preserve the order of (doc, section_name) pairs
+    retrieved_docs = sorted(
+        retrieved_docs,
+        key=lambda x: (query_df['doc'].tolist().index(x.document_name), query_df['section_name'].tolist().index(x.section_name))
+    )
+    retrieved_docs = list(retrieved_docs)
+    # print(retrieved_docs)
+
+    assert len(list(retrieved_docs)) > 0, f"No se encontraron documentos similares para la pregunta: {question}"
 
     print(f"{question=}")
 
@@ -151,8 +173,8 @@ for question, answer in tqdm(qa, total=len(qa)):
         return f"\n\t<{tag}_CHUNK>\n<TAG>{pg_section}</TAG>\n{pg_cntnt}\n\t</{tag}_CHUNK>\n"
         
     entries = "\n".join([
-        format_pg_section(doc, pg_section, pg_cntnt)
-        for doc, pg_section, pg_cntnt, _ in retrieved_docs
+        format_pg_section(doc, section, cntnt)
+        for doc, section, cntnt in retrieved_docs
     ])
     context = context_format.format(entries=entries)
 
