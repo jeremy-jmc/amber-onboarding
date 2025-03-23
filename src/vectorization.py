@@ -130,9 +130,9 @@ def get_sections(page: list[str]) -> list[str]:
     roman_pattern = re.compile(r"^\s*(I{1,3}|IV|V|VI{0,3}|IX|X)\.\s+")
     enumeration_pattern = re.compile(r"^\s*((I{1,3}|IV|V|VI{0,3}|IX|X)|\d+(\.\d+)*)\.\s+")
     
-    filtered_sentences = [(s.replace("*", ''), s) for s in page if (s.startswith('**') and s.endswith('**')) or bool(roman_pattern.match(s))]  # 
+    filtered_sentences = [(s.replace("*", '').replace("#", '').strip(), s) for s in page if (s.startswith('**') and s.endswith('**')) or bool(roman_pattern.match(s)) or (s.replace('*', '').replace('#', '').strip().startswith("ANEXO"))]
     
-    filtered_sentences = [tup for tup in filtered_sentences if enumeration_pattern.match(tup[0])]
+    filtered_sentences = [tup for tup in filtered_sentences if enumeration_pattern.match(tup[0])  or (tup[0].replace('*', '').replace('#', '').strip().startswith("ANEXO"))]
     return filtered_sentences
 
 
@@ -200,11 +200,6 @@ def get_section_to_root_path(tree: dict, section: str) -> list[str]:
             if path:
                 return [k] + path
     return path
-
-
-def parse_root_path_to_xml(root_path: list) -> str:
-    hierarchy = '\n'.join([i * '\t' + v for i, v in enumerate(root_path)])
-    return f"<index>\n{hierarchy}\n<index>"
 
 
 def create_index_xml(path_list: list) -> str:   # , chunk_content: str
@@ -334,8 +329,14 @@ How can I split obtain meaningful chunks joining text between pages before split
 
 from llm import bedrock_runtime, embed_call
 
+def format_chunk_content(chunk: Document) -> str:
+    # section_formatted = '\n'.join(chunk.metadata['section']).upper()
+    # return f"{section_formatted}\n\n{chunk.page_content}"
+    return f"{chunk.metadata['xml_header']}<content>\n{chunk.page_content}\n</content>"
+
+# SRC: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/use-xml-tags#example-legal-contract-analysis
 all_embs = [
-    embed_call(bedrock_runtime, f"{split.metadata['xml_header']}<content>\n{split.page_content}\n</content>")
+    embed_call(bedrock_runtime, format_chunk_content(split))
     for split in tqdm(all_splits, total=len(all_splits), desc="Get embeddings")
 ]
 
@@ -367,7 +368,7 @@ for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embe
         # page_index=all_splits[idx].metadata['page_index'],
         page_section=all_splits[idx].metadata['section'][-1],
         document_name=FILE_PATH,
-        page_content=f"{all_splits[idx].metadata['xml_header']}<content>\n{all_splits[idx].page_content}\n</content>",
+        page_content=format_chunk_content(all_splits[idx]),
         embedding=emb['embedding']
     )
 
