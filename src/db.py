@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String, Boolean
 from sqlalchemy import select
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import or_, tuple_
 
 
 DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
@@ -34,3 +35,6 @@ class DocumentSection(Base):
 
 
 Base.metadata.create_all(bind=engine)
+
+# DROP TABLE document_sections;
+# DROP TABLE embeddings;

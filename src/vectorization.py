@@ -295,8 +295,19 @@ for idx, d in tqdm(enumerate(docs), total=len(docs), desc="Saving pages"):
 # https://python.langchain.com/api_reference/text_splitters/character/langchain_text_splitters.character.RecursiveCharacterTextSplitter.html
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+"""
+chunk_size, chunk_overlap
+100 50 -> Reduce la cantidad de secciones retornadas, aumentando la calidad porque rankea chunks mas peque;os de una seccion y evita que se filtren otras, menor varianza de secciones
+250 50
+500 50
+800 80
+1000 100
+1000 300
+1000 500
+"""
+
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000, chunk_overlap=250, add_start_index=True
+    chunk_size=500, chunk_overlap=100, add_start_index=True
 )
 
 all_splits = text_splitter.split_documents(docs)
@@ -315,8 +326,8 @@ all_splits = text_splitter.split_documents(docs)
 
 print(len(all_splits))
 print(dir(all_splits[0]))
-print(all_splits[5].page_content)
-print(json.dumps(all_splits[5].metadata, indent=2, ensure_ascii=False))
+print(all_splits[400].page_content)
+print(json.dumps(all_splits[400].metadata, indent=2, ensure_ascii=False))
 
 # for idx, split in enumerate(all_splits):
 #     print(f"{split.metadata['xml_header']}<content>\n{split.page_content}\n</content>\n\n")

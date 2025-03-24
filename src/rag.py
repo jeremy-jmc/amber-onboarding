@@ -35,8 +35,10 @@ def extract_answer(xml_string):
         root = ET.fromstring(f"<root>{xml_string}</root>")  # Wrap in a root tag to handle multiple top-level elements
         answer_element = root.find("respuesta")
         return answer_element.text.strip() if answer_element is not None else None
-    except ET.ParseError:
-        return None  # Handle invalid XML cases
+    except Exception as e:
+        raise e
+    # except ET.ParseError:
+    #     return None  # Handle invalid XML cases
 
 
 # def generate_response(query):
@@ -96,6 +98,17 @@ qa = [
         "La consola será manejada por el Especialista asignado por la Sub Gerencia de Operaciones de Tecnologías de Información de la Gerencia de Producción de la GCTIC."),
 
     # TODO: preguntas acerca de Anexos
+
+# * Section questions
+    ("Que dice la seccion 2 'Finalidad publica'?", ""),
+    ("Que dice la seccion 6.3.1.?", ""),
+    ("Explicame lo que dice en la seccion 5.5?", ""),
+
+# * Comparative questions
+    ("¿Qué diferencias hay en la sección 2 'Finalidad publica'?", ""),       # ! FALLA -> Si pongo solo 2, confunde con romanos -> Si pongo el titulo de la seccion lo hace algo mejor    
+    ("¿Qué diferencias hay en la sección 6.3.1.?", "")
+    
+    # Seccion 5.1: diferencias importantes
 ]
 
 system_prompt = """
@@ -121,6 +134,7 @@ Para asegurar una respuesta precisa y bien fundamentada, sigue estos pasos:
 4. Evalúa la fuerza de la evidencia para cada posible respuesta.
 5. Escribe tu razonamiento dentro de las etiquetas <analisis> para explicar tu proceso de pensamiento y cómo llegaste a tu respuesta.
 6. Proporciona tu respuesta final dentro de las etiquetas <respuesta>.
+7. Devuelve una estructura de respuesta XML bien formada, parseable. Sin etiquetas adicionales dentro y fuera de las etiquetas de respuesta. Asegúrate de que cada etiqueta esté correctamente cerrada y que la estructura sea jerárquicamente válida.
 
 Recuerda:
 - Utiliza solo la información proporcionada en el contexto.
@@ -134,15 +148,17 @@ shutil.rmtree('../data/qa', ignore_errors=True)
 os.makedirs('../data/qa', exist_ok=True)
 
 call_claude = True
-k = 5       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
+k = 10       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
 
 df = []
 for question, answer in tqdm(qa, total=len(qa)):
+    print(question)
     retrieved_rag = search_similar_text(question, k)
     context_format = """<CONTEXT>\n{entries}\n</CONTEXT>""".strip()
     
     df_rag = pd.DataFrame(copy.deepcopy(list(retrieved_rag)), columns=['doc', 'section_name', 'section_cntnt', 'cosine_distance'])
     query_df = df_rag[['doc', 'section_name']].drop_duplicates(subset=['section_name'], keep='first')
+    query_pairs = list(zip(query_df['doc'], query_df['section_name']))
 
     retrieved_docs = Session.execute(
         select(
@@ -150,10 +166,8 @@ for question, answer in tqdm(qa, total=len(qa)):
             DocumentSection.section_name,
             DocumentSection.section_content
         ).where(
-            # TODO: improve way to query
-            DocumentSection.section_name.in_(query_df['section_name'].tolist()),
-            DocumentSection.document_name.in_(query_df['doc'].tolist())
-        )
+            or_(*(tuple_(DocumentSection.document_name, DocumentSection.section_name) == pair for pair in query_pairs))
+        )   # .distinct()
     ).all()
 
     # Preserve the order of (doc, section_name) pairs
@@ -170,7 +184,7 @@ for question, answer in tqdm(qa, total=len(qa)):
 
     def format_pg_section(doc, pg_section, pg_cntnt) -> str:
         tag = os.path.splitext(os.path.basename(doc))[0].upper()
-        return f"\n\t<{tag}_CHUNK>\n<TAG>{pg_section}</TAG>\n{pg_cntnt}\n\t</{tag}_CHUNK>\n"
+        return f"\n\t|{tag}_CHUNK|\n|TAG|{pg_section}|/TAG|\n{pg_cntnt}\n\t|/{tag}_CHUNK|\n"
         
     entries = "\n".join([
         format_pg_section(doc, section, cntnt)
@@ -212,19 +226,21 @@ for question, answer in tqdm(qa, total=len(qa)):
         with open(f'../data/qa/response-{k}-{query_to_fname}.txt', 'w') as f:
             f.write(llm_answer)
 
-df = pd.DataFrame(df)
-# display(df)
 
-# df['bleu'] = df['bleu_dict'].apply(lambda x: x['bleu'])
-# df['rouge1'] = df['rouge_dict'].apply(lambda x: x['rouge1'])
-# df['rouge2'] = df['rouge_dict'].apply(lambda x: x['rouge2'])
-# df['rougeL'] = df['rouge_dict'].apply(lambda x: x['rougeL'])
-# df['meteor'] = df['meteor_dict'].apply(lambda x: x['meteor'])
-df['bert_score'] = df['bert_score_dict'].apply(lambda x: np.mean(x['f1']) if x else None)
+if call_claude:
+    df = pd.DataFrame(df)
+    # display(df)
 
-metric_list = ['bert_score']    # 'bleu', 'rouge1', 'rouge2', 'rougeL', 'meteor', 
+    # df['bleu'] = df['bleu_dict'].apply(lambda x: x['bleu'])
+    # df['rouge1'] = df['rouge_dict'].apply(lambda x: x['rouge1'])
+    # df['rouge2'] = df['rouge_dict'].apply(lambda x: x['rouge2'])
+    # df['rougeL'] = df['rouge_dict'].apply(lambda x: x['rougeL'])
+    # df['meteor'] = df['meteor_dict'].apply(lambda x: x['meteor'])
+    df['bert_score'] = df['bert_score_dict'].apply(lambda x: np.mean(x['f1']) if x else None)
 
-display(df[['question', 'answer', 'llm_response'] + metric_list].sort_values(by=metric_list, ascending=True))
+    metric_list = ['bert_score']    # 'bleu', 'rouge1', 'rouge2', 'rougeL', 'meteor', 
+
+    display(df[['question', 'answer', 'llm_response'] + metric_list].sort_values(by=metric_list, ascending=True))
 
 """
     Preguntas de comprensión general
