@@ -41,8 +41,6 @@ def extract_answer(xml_string):
     #     return None  # Handle invalid XML cases
 
 
-# def generate_response(query):
-
 """
 Document(
     metadata={'page_index': 6}, 
@@ -66,7 +64,7 @@ Contenido asd asd asd
 # TODO: levantar BD de las secciones y traerte las secciones enteras para presentarlas en el contexto
 
 # Prompt Improver: https://console.anthropic.com/dashboard
-qa = [
+QA = [
 # # * Chunk question
 #     'g.\nEl servicio debe permitir asociar una o más direcciones IP elásticas a cualquier\ninstancia\nde\nla\nnube\nprivada\nvirtual,\nde modo que puedan alcanzarse\ndirectamente desde Internet.\nh.\nEl servicio debe permitir conectarse a la nube privada virtual con otras nubes\nprivadas virtuales y obtener acceso a los recursos de otras nubes privadas\nvirtuales a través de direcciones IP privadas mediante la interconexión de nube\nprivada virtual.\ni.\nEl servicio debe permitir conectarse de manera privada a los servicios del\nfabricante de la nube pública sin usar una gateway de Internet, ni una NAT ni\nun proxy de firewall mediante un punto de enlace de la nube privada virtual.\nj.\nEl servicio debe permitir conectar la nube privada virtual y la infraestructura de\nTI local con la VPN del fabricante de la nube pública de sitio a sitio.\nk.\nEl servicio debe permitir asociar grupos de seguridad de la nube privada virtual\ncon instancias en la plataforma.\nl.',
 
@@ -111,11 +109,11 @@ qa = [
     # Seccion 5.1: diferencias importantes
 ]
 
-system_prompt = """
+SYSTEM_PROMPT = """
 Eres un asistente de IA especializado en responder preguntas basadas en contextos proporcionados. Tu tarea es analizar el contexto dado, entender la pregunta y proporcionar una respuesta precisa y relevante en español.
 """
 
-prompt = """
+PROMPT = """
 Primero, te presentaré el contexto sobre el cual se basará la pregunta:
 
 {context}
@@ -144,18 +142,66 @@ Recuerda:
 Comienza tu proceso de razonamiento y respuesta ahora.
 """
 
+CALL_CLAUDE = True
+
+K = 10       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
+
 shutil.rmtree('../data/qa', ignore_errors=True)
 os.makedirs('../data/qa', exist_ok=True)
 
-call_claude = True
-k = 10       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
 
-df = []
-for question, answer in tqdm(qa, total=len(qa)):
-    print(question)
-    retrieved_rag = search_similar_text(question, k)
+def classify_question_type(query: str) -> str:
+    CLASSIFY_QUESTION_PROMPT = f"""
+You are a sophisticated question classification system. Your task is to categorize a given question into one of two categories based on whether it refers to a single document or compares multiple documents.
+
+Here is the question you need to classify:
+
+<question>
+{query}
+</question>
+
+Please follow these steps to classify the question:
+
+1. Analyze the question carefully, considering its content and structure.
+2. Determine if the question is about a single document or if it compares two or more documents.
+3. Classify the question as follows:
+   - If the question is about a single document, classify it as 'general'.
+   - If the question compares two or more documents, classify it as 'comparative'.
+
+In your classification process, consider the following:
+- List any keywords or phrases that might indicate a comparative question (e.g., "difference", "compare", "versus", "both").
+- Explicitly state whether multiple documents are mentioned in the question.
+- Consider arguments for classifying the question as 'general'.
+- Consider arguments for classifying the question as 'comparative'.
+- Make a final decision based on the strength of these arguments.
+
+After your analysis, provide your classification as a single word: either 'general' or 'comparative'.
+
+Example output:
+<classification_process>
+Keywords indicating comparison: None found
+Multiple documents mentioned: No
+Arguments for 'general': The question asks about the main theme of a specific book, without mentioning any other documents.
+Arguments for 'comparative': None
+Decision: The question focuses on a single document's content without any comparative elements.
+</classification_process>
+general
+
+Please proceed with your classification process and final classification.
+    """
+
+    return claude_call(bedrock=bedrock_runtime, query=CLASSIFY_QUESTION_PROMPT, system_message=SYSTEM_PROMPT)
+
+
+def format_pg_section(doc, pg_section, pg_cntnt) -> str:
+    tag = os.path.splitext(os.path.basename(doc))[0].upper()
+    return f"\n\t|{tag}_CHUNK|\n|TAG|{pg_section}|/TAG|\n{pg_cntnt}\n\t|/{tag}_CHUNK|\n"
+
+
+def general_qa_tool(question: str) -> str:
+    retrieved_rag = search_similar_text(question, K)
     context_format = """<CONTEXT>\n{entries}\n</CONTEXT>""".strip()
-    
+
     df_rag = pd.DataFrame(copy.deepcopy(list(retrieved_rag)), columns=['doc', 'section_name', 'section_cntnt', 'cosine_distance'])
     query_df = df_rag[['doc', 'section_name']].drop_duplicates(subset=['section_name'], keep='first')
     query_pairs = list(zip(query_df['doc'], query_df['section_name']))
@@ -171,64 +217,100 @@ for question, answer in tqdm(qa, total=len(qa)):
     ).all()
 
     # Preserve the order of (doc, section_name) pairs
-    retrieved_docs = sorted(
+    retrieved_docs = list(sorted(
         retrieved_docs,
         key=lambda x: (query_df['doc'].tolist().index(x.document_name), query_df['section_name'].tolist().index(x.section_name))
-    )
-    retrieved_docs = list(retrieved_docs)
-    # print(retrieved_docs)
+    ))
 
     assert len(list(retrieved_docs)) > 0, f"No se encontraron documentos similares para la pregunta: {question}"
 
     print(f"{question=}")
-
-    def format_pg_section(doc, pg_section, pg_cntnt) -> str:
-        tag = os.path.splitext(os.path.basename(doc))[0].upper()
-        return f"\n\t|{tag}_CHUNK|\n|TAG|{pg_section}|/TAG|\n{pg_cntnt}\n\t|/{tag}_CHUNK|\n"
         
     entries = "\n".join([
         format_pg_section(doc, section, cntnt)
         for doc, section, cntnt in retrieved_docs
     ])
+
     context = context_format.format(entries=entries)
+    p = PROMPT.format(context=context, query=question)
 
-    query_to_fname = question.replace('¿', '').replace('?', '').replace(' ', '_').lower()
+    return {
+        'context': context,
+        'prompt': p,
+        'system_prompt': SYSTEM_PROMPT
+    }
+
+
+def compare_documents_tool(query: str) -> str:
+    return {
+        # 'context': "",
+        # 'prompt': "",
+        # 'system_prompt': SYSTEM_PROMPT
+    }
+
+
+def handle_query(q_a: tuple):
+    q, a = q_a
+    question_response = classify_question_type(q)['content'][0]['text']
+    question_type = question_response.split()[-1]
+
+    query_to_fname = q.replace('¿', '').replace('?', '').replace(' ', '_').lower()
     query_to_fname = ''.join(e for e in query_to_fname if e.isalnum() or e == '_')[:50]
-    # print(f"{query_to_fname=}")
-    # print(context)
-    with open(f'../data/qa/prompt-{k}-{query_to_fname}.txt', 'w') as f:
-        f.write(prompt.format(context=context, query=question))
-    # print(prompt)
 
-    if call_claude:
-        response: dict = claude_call(bedrock_runtime, system_prompt, prompt.format(context=context, query=question))
+    print(f"{q=}")
+    print(f"{question_response=}")
+    print(f"{question_type=}")
+
+    retrieval_dict: dict = None
+    if question_type == 'general':
+        retrieval_dict = general_qa_tool(q)
+    elif question_type == 'comparative':
+        retrieval_dict = compare_documents_tool(q)
+    else:
+        raise ValueError(f"Invalid question type: {question_type}")
+    
+    print(json.dumps(retrieval_dict, indent=2, ensure_ascii=False))
+
+    if len(retrieval_dict) and CALL_CLAUDE:
+        with open(f'../data/qa/prompt-{K}-{query_to_fname}.txt', 'w') as f:
+            f.write(retrieval_dict['prompt'])
+
+        response: dict = claude_call(bedrock_runtime, retrieval_dict['system_prompt'], retrieval_dict['prompt'])
         # print(json.dumps(response['content'], indent=2, ensure_ascii=False))
-        
+
         llm_answer = extract_answer(response['content'][0]['text'])
-        if answer:
-            b_score = bert_score.compute(predictions=[llm_answer], references=[answer], lang='es')
+
+        if a:
+            b_score = bert_score.compute(predictions=[llm_answer], references=[a], lang='es')
         else:
             b_score = None
 
-        df.append({
-            'question': question,
-            'answer': answer,
+        retrieval_dict['response'] = {
+            'question': q,
+            'answer': a,
             'llm_response': llm_answer,
             # 'bleu_dict': bleu.compute(predictions=[llm_answer], references=[answer]),
             # 'rouge_dict': rouge.compute(predictions=[llm_answer], references=[answer]),
             # 'meteor_dict': meteor.compute(predictions=[llm_answer], references=[answer]),
             'bert_score_dict': b_score
-        })
+        }
 
-        with open(f'../data/qa/response-{k}-{query_to_fname}.json', 'w') as f:
+        with open(f'../data/qa/response-{K}-{query_to_fname}.json', 'w') as f:
             f.write(json.dumps(response, indent=2, ensure_ascii=False))
 
-        with open(f'../data/qa/response-{k}-{query_to_fname}.txt', 'w') as f:
+        with open(f'../data/qa/response-{K}-{query_to_fname}.txt', 'w') as f:
             f.write(llm_answer)
 
+    return retrieval_dict
 
-if call_claude:
-    df = pd.DataFrame(df)
+records = []
+for q_a in tqdm(QA, total=len(QA)):
+    records.append(handle_query(q_a))
+print(f"{records=}")
+
+
+if CALL_CLAUDE:
+    df = pd.DataFrame([r['response'] for r in records if 'response' in r])
     # display(df)
 
     # df['bleu'] = df['bleu_dict'].apply(lambda x: x['bleu'])
