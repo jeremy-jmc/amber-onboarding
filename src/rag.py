@@ -495,15 +495,14 @@ def handle_query(q_a: tuple) -> dict:
     query_to_fname = ''.join(e for e in query_to_fname if e.isalnum() or e == '_')[:50]
 
     retrieval_dict: dict = None
-    retrieval_dict = compare_documents_tool(q)
+    # retrieval_dict = compare_documents_tool(q)
 
-    # if question_type == 'general':
-    #     return {}
-    #     retrieval_dict = general_qa_tool(q)
-    # elif question_type == 'comparative':
-    #     retrieval_dict = compare_documents_tool(q)
-    # else:
-    #     raise ValueError(f"Invalid question type: {question_type}")
+    if question_type == 'general':
+        retrieval_dict = general_qa_tool(q)
+    elif question_type == 'comparative':
+        retrieval_dict = compare_documents_tool(q)
+    else:
+        raise ValueError(f"Invalid question type: {question_type}")
 
     print(f"{q=}")
     print(f"{question_type_response=}")
@@ -529,6 +528,7 @@ def handle_query(q_a: tuple) -> dict:
 
         retrieval_dict['response'] = {
             'question': q,
+            'question_type': question_type,
             'answer': a,
             'llm_response': llm_answer,
             # 'bleu_dict': bleu.compute(predictions=[llm_answer], references=[answer]),
