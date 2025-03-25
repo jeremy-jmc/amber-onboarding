@@ -1,6 +1,7 @@
 import boto3
 import json
 
+# TODO: https://docs.helicone.ai/integrations/bedrock/python
 bedrock_runtime = boto3.client(
     service_name='bedrock-runtime',
     region_name='us-east-1',

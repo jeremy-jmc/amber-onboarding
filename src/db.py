@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String, Boolean
 from sqlalchemy import select
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import or_, tuple_
+from sqlalchemy import and_, or_, tuple_, text, distinct
 
 
 DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
