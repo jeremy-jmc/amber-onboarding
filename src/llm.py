@@ -2,10 +2,12 @@ import botocore
 import boto3
 import json
 import os
+from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
 
 load_dotenv('../.env')
 
+# TODO: https://python.langchain.com/docs/how_to/structured_output/
 # TODO: https://docs.helicone.ai/integrations/bedrock/python
 # TODO: try https://python.useinstructor.com/integrations/bedrock/
 bedrock_runtime = boto3.client(
@@ -14,6 +16,12 @@ bedrock_runtime = boto3.client(
     endpoint_url="https://bedrock.helicone.ai/v1/us-east-1"
 )
 # print(help(type(bedrock_runtime)))
+
+bedrock_langchain = init_chat_model(
+    "anthropic.claude-3-5-sonnet-20240620-v1:0", 
+    model_provider="bedrock_converse", 
+    region_name='us-east-1',
+)
 
 event_system = bedrock_runtime.meta.events
 
@@ -133,4 +141,3 @@ def claude_call(bedrock: botocore.client,
 # ]
 # ai_msg = llm.invoke(messages)
 # ai_msg
-
