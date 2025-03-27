@@ -1,3 +1,4 @@
+import botocore
 import boto3
 import json
 import os
@@ -10,32 +11,33 @@ load_dotenv('../.env')
 bedrock_runtime = boto3.client(
     service_name='bedrock-runtime',
     region_name='us-east-1',
-    # endpoint_url="https://bedrock.helicone.ai/v1/us-east-1"
+    endpoint_url="https://bedrock.helicone.ai/v1/us-east-1"
 )
+# print(help(type(bedrock_runtime)))
 
-# event_system = bedrock_runtime.meta.events
+event_system = bedrock_runtime.meta.events
 
-# def process_custom_arguments(params, context, **kwargs):
-#     if (custom_headers := params.pop("custom_headers", None)):
-#         context["custom_headers"] = custom_headers
-
-
-# def add_custom_header_before_call(model, params, request_signer, **kwargs):
-#     params['headers']['Helicone-Auth'] = f'Bearer {os.getenv("HELICONE_API_KEY")}'
-#     params['headers']['aws-access-key'] = os.getenv("AWS_ACCESS_KEY_ID")
-#     params['headers']['aws-secret-key'] = os.getenv("AWS_SECRET_ACCESS_KEY")
-#     # optionally, you can pass the aws-session-token instead of access and secret key if you are using temporary credentials
-#     params['headers']['aws-session-token'] = os.getenv("AWS_SESSION_TOKEN")
-#     if (custom_headers := params.pop("custom_headers", None)):
-#         params['headers'].update(custom_headers)
-#     headers = params['headers']
-#     # print(f'param headers: {headers}')
+def process_custom_arguments(params, context, **kwargs):
+    if (custom_headers := params.pop("custom_headers", None)):
+        context["custom_headers"] = custom_headers
 
 
-# event_system.register("before-parameter-build.bedrock-runtime.InvokeModel",
-#                       process_custom_arguments)
-# event_system.register('before-call.bedrock-runtime.InvokeModel',
-#                       add_custom_header_before_call)
+def add_custom_header_before_call(model, params, request_signer, **kwargs):
+    params['headers']['Helicone-Auth'] = f'Bearer {os.getenv("HELICONE_API_KEY")}'
+    params['headers']['aws-access-key'] = os.getenv("AWS_ACCESS_KEY_ID")
+    params['headers']['aws-secret-key'] = os.getenv("AWS_SECRET_ACCESS_KEY")
+    # optionally, you can pass the aws-session-token instead of access and secret key if you are using temporary credentials
+    params['headers']['aws-session-token'] = os.getenv("AWS_SESSION_TOKEN")
+    if (custom_headers := params.pop("custom_headers", None)):
+        params['headers'].update(custom_headers)
+    headers = params['headers']
+    # print(f'param headers: {headers}')
+
+
+event_system.register("before-parameter-build.bedrock-runtime.InvokeModel",
+                      process_custom_arguments)
+event_system.register('before-call.bedrock-runtime.InvokeModel',
+                      add_custom_header_before_call)
 
 
 # -----------------------------------------------------------------------------
@@ -86,7 +88,7 @@ def claude_body(system_prompt: str, query: str):
 
 # https://github.com/amberpe/poc-rag-multidocs/blob/main/prompt.py
 # https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
-def claude_call(bedrock: boto3.client,
+def claude_call(bedrock: botocore.client,
                 system_message: str,
                 query: str,
                 model_id='anthropic.claude-3-5-sonnet-20240620-v1:0'):

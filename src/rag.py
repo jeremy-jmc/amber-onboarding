@@ -9,11 +9,13 @@ import copy
 from tqdm import tqdm
 from langchain_aws import ChatBedrock
 import logging
+from difflib import SequenceMatcher, HtmlDiff, ndiff
 
 from db import *
 from metrics import *
 from utilities import *
 import warnings
+import re
 
 warnings.filterwarnings("ignore")
 
@@ -104,7 +106,8 @@ El plazo de prestación del servicio será de trescientos sesenta y cinco (365) 
 # * Comparative questions
     
     # No hay diferencias
-    ("¿Qué diferencias hay en la sección 2 'Finalidad publica'?", ""),
+    ("¿Qué diferencias hay en la sección 2 'Finalidad publica'?", 
+     "No hay diferencias en la seccion 2 'Finalidad publica' entre los 2 documentos"),
     
     # Seccion 5.1: diferencias importantes, pero contexto muy largo para la LLM
     ("Cuales son las diferencias en la sección 5.1.?", ""),
@@ -125,265 +128,30 @@ if RESET:
 
 
 # -----------------------------------------------------------------------------
+# PROMPTS
+# -----------------------------------------------------------------------------
+
+ANSWER_QUESTION_PROMPT_SYSTEM = load_prompt('./prompts/ans_q_system.txt')
+
+ANSWER_QUESTION_PROMPT_USER = load_prompt('./prompts/ans_q_user.txt')
+
+CLASSIFY_QUESTION_PROMPT_USER = load_prompt('./prompts/classify_question_user.txt')
+
+CHECK_SECTION_PROMPT_USER = load_prompt('./prompts/check_section_user.txt')
+
+TOPK_SECTIONS_PROMPT_SYSTEM = load_prompt('./prompts/topk_sections_system.txt')
+
+TOPK_SECTIONS_PROMPT_USER = load_prompt('./prompts/topk_sections_user.txt')
+
+# -----------------------------------------------------------------------------
 # LLM FUNCTIONS
 # -----------------------------------------------------------------------------
-SYSTEM_PROMPT = """
-Eres un asistente de IA especializado en responder preguntas basadas en contextos proporcionados. Tu tarea es analizar el contexto dado, entender la pregunta y proporcionar una respuesta precisa y relevante en español.
-"""
-
-PROMPT = """
-Primero, te presentaré el contexto sobre el cual se basará la pregunta:
-
-{context}
-
-Ahora, te haré una pregunta relacionada con este contexto. Tu objetivo es responder a esta pregunta utilizando únicamente la información proporcionada en el contexto anterior.
-
-<PREGUNTA>
-{query}
-</PREGUNTA>
-
-Para asegurar una respuesta precisa y bien fundamentada, sigue estos pasos:
-
-1. Analiza cuidadosamente el contexto proporcionado.
-2. Extrae y cita la información relevante del contexto para responder a la pregunta.
-3. Considera las posibles interpretaciones de la pregunta.
-4. Evalúa la fuerza de la evidencia para cada posible respuesta.
-5. Escribe tu razonamiento dentro de las etiquetas <analisis> para explicar tu proceso de pensamiento y cómo llegaste a tu respuesta.
-6. Proporciona tu respuesta final dentro de las etiquetas <respuesta>.
-7. Devuelve una estructura de respuesta XML bien formada, parseable. Sin etiquetas adicionales dentro y fuera de las etiquetas de respuesta. Asegúrate de que cada etiqueta esté correctamente cerrada y que la estructura sea jerárquicamente válida.
-
-Recuerda:
-- Utiliza solo la información proporcionada en el contexto.
-- Si la información necesaria para responder la pregunta no está en el contexto, indica que no puedes responder basándote en la información disponible.
-- Mantén tu respuesta clara, concisa y directamente relacionada con la pregunta.
-
-Comienza tu proceso de razonamiento y respuesta ahora.
-"""
-
-
-CLASSIFY_QUESTION_PROMPT = """
-Eres un sistema sofisticado de clasificación de preguntas. Tu objetivo es categorizar una pregunta en una de dos categorías basándote en si se refiere a un solo documento o compara múltiples documentos.
-
-Objetivo de Clasificación:
-1. Si la pregunta trata sobre un solo documento: clasificar como 'general'
-2. Si la pregunta compara dos o más documentos: clasificar como 'comparativa'
-
-Proceso de Clasificación:
-Debes realizar un análisis detallado considerando:
-- Palabras o frases que indiquen una pregunta comparativa
-- Mención de múltiples documentos
-- Argumentos para clasificación 'general'
-- Argumentos para clasificación 'comparativa'
-
-Ejemplos de Clasificación:
-
-Ejemplo 1:
-Pregunta: "¿Cuál es el objetivo principal del documento?"
-<classification_process>
-Palabras clave que indican comparación: Ninguna encontrada
-Documentos múltiples mencionados: No
-Argumentos para 'general': La pregunta se enfoca en un único documento específico
-Argumentos para 'comparativa': Ninguno
-Decisión: Clasificación como 'general'
-</classification_process>
-general
-
-Ejemplo 2:
-Pregunta: "Cuales son las diferencias en los anexos?"
-<classification_process>
-Palabras clave que indican comparación: "diferencias"
-Documentos múltiples mencionados: Sí (múltiples anexos)
-Argumentos para 'general': Ninguno
-Argumentos para 'comparativa': Solicitud explícita de comparación entre anexos
-Decisión: Clasificación como 'comparativa'
-</classification_process>
-comparativa
-
-Ejemplo 3:
-Pregunta: "¿Cuáles son los requerimientos principales del proyecto?"
-<classification_process>
-Palabras clave que indican comparación: Ninguna encontrada
-Documentos múltiples mencionados: No
-Argumentos para 'general': La pregunta busca información sobre un único proyecto
-Argumentos para 'comparativa': Ninguno
-Decisión: Clasificación como 'general'
-</classification_process>
-general
-
-Ejemplo 4:
-Pregunta: "En que se diferencia la seccion 7 de los documentos?"
-<classification_process>
-Palabras clave que indican comparación: "diferencia"
-Documentos múltiples mencionados: Sí (múltiples documentos)
-Argumentos para 'general': Ninguno
-Argumentos para 'comparativa': Comparación explícita de la sección 7 entre varios documentos
-Decisión: Clasificación como 'comparativa'
-</classification_process>
-comparativa
-
-Ejemplo 5:
-Pregunta: "¿En que se diferencia el ANEXO A?"
-<classification_process>
-Palabras clave que indican comparación: "diferencia"
-Documentos múltiples mencionados: Implícitamente (referencias a un ANEXO A específico)
-Argumentos para 'general': La pregunta parece centrarse en un único anexo
-Argumentos para 'comparativa': La palabra "diferencia" sugiere una comparación
-Decisión: Clasificación como 'comparativa'
-</classification_process>
-comparativa
-
-Pasos para Clasificar la Pregunta:
-1. Analiza cuidadosamente el contenido y la estructura de la pregunta
-2. Identifica si se trata de un solo documento o múltiples documentos
-3. Detecta palabras clave comparativas: "diferencia", "comparar", "versus", "ambos"
-4. Evalúa los argumentos para cada clasificación
-5. Toma una decisión final basada en la solidez de los argumentos
-
-Formato de Salida:
-- Proporciona un <classification_process> detallado
-- Indica la clasificación final como una sola palabra: 'general' o 'comparativa'
-
-Instrucción Final:
-Por favor, realiza el proceso de clasificación para la siguiente pregunta:
-<question>
-{query}
-</question>
-"""
-
-CHECK_SECTIONS_PROMPT = """
-Eres un sistema especializado en identificar referencias a secciones específicas en una pregunta.
-
-Objetivo:
-Determinar si la pregunta hace referencia a una sección específica de un documento.
-
-Criterios de Identificación:
-1. Patrones de secciones numeradas: "5.1", "7.2", "Sección 3", etc.
-2. Referencias a anexos: "Anexo A", "Anexo 1", "Apéndice B"
-3. Referencias a partes específicas: "capítulo", "página", "tabla", "figura"
-4. Palabras clave que sugieren referencia específica: "en", "de", "del"
-
-Proceso de Análisis:
-- Examinar la pregunta en busca de patrones numéricos o textuales de secciones
-- Considerar contexto y estructura de la referencia
-- Evaluar la especificidad de la mención
-
-Ejemplos:
-
-Ejemplo 1:
-Pregunta: "¿Cuál es el contenido de la sección 5.1?"
-<classification_process>
-Patron de sección identificado: "5.1"
-Tipo de referencia: Sección numerada
-Decisión: Si
-</classification_process>
-Si
-
-Ejemplo 2:
-Pregunta: "Describe el Anexo A del documento"
-<classification_process>
-Patron de sección identificado: "Anexo A"
-Tipo de referencia: Anexo específico
-Decisión: Si
-</classification_process>
-Si
-
-Ejemplo 3:
-Pregunta: "¿Cuál es el objetivo principal?"
-<classification_process>
-Patron de sección identificado: Ninguno
-Tipo de referencia: Pregunta general
-Decisión: No
-</classification_process>
-No
-
-Pasos para Análisis:
-1. Buscar patrones numéricos de secciones
-2. Identificar palabras clave de referencias específicas
-3. Evaluar el nivel de especificidad de la pregunta
-4. Tomar decisión final
-
-Instrucción Final:
-Analiza la siguiente pregunta:
-<question>
-{query}
-</question>
-"""
-
-SYSTEM_SIMILARITY_PROMPT = """
-Eres un asistente de IA avanzado especializado en análisis semántico y clasificación de información textual. Tus capacidades principales incluyen:
-Comprender profundamente el contexto semántico de las preguntas
-Analizar los títulos de secciones con una evaluación de relevancia matizada
-Proporcionar clasificaciones precisas y bien razonadas basadas en la similitud semántica
-Generar resultados estructurados que cumplan requisitos específicos
-
-Pautas Clave:
-Priorizar la comprensión semántica sobre la coincidencia literal de palabras clave
-Ser exhaustivo y sistemático en la evaluación de relevancia
-Proporcionar razonamientos claros y explicables para las clasificaciones
-Adherirse estrictamente a los requisitos de formato de salida
-"""
-
-SIMILARITY_PROMPT = """
-Eres un asistente de IA avanzado especializado en análisis semántico y clasificación de información textual. Tu tarea es analizar la relevancia de los títulos de secciones con respecto a una pregunta específica.
-
-## Ejemplos de Análisis
-Asume las siguientes SECCIONES DISPONIBLES:
-
-['1. DENOMINACIÓN DE LA CONTRATACIÓN', '2. FINALIDAD PÚBLICA', '3. ANTECEDENTES', '4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico', '5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '6. REQUISITOS Y RECURSOS DEL PROVEEDOR', '6.2. Requisitos de calificación del proveedor', '6.3. Recursos a ser provistos por el proveedor', '6.3.1. Entregables del servicio', '6.3.2. Personal clave', '7. OTRAS CONSIDERACIONES PARA LA EJECUCION DE LA PRESTACION', '7.1. Otras obligaciones', '7.1.1. Medidas de seguridad', '7.2. Confiabilidad', '7.3. Medidas de control durante la ejecución contractual', '7.4. Conformidad de la prestación', '7.4. Forma de pago', '7.5. Penalidades', '7.6. Responsabilidad de vicios ocultos', '8. ANEXOS', 'ANEXO A', 'ANEXO B', 'ANEXO C', 'ANEXO D', 'ANEXO N° E', 'ANEXO N° F', 'I. TERMINOS DE REFERENCIA', 'II. REQUISITOS DE CALIFICACION']
-
-### Ejemplo 1: Periodo de Garantía
-Pregunta: "De acuerdo a la sección 5. ¿Cuál es el periodo de garantía que debe tener toda la solución?"
-Salida:
-['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo']
-
-### Ejemplo 2: Controles de Seguridad
-Pregunta: "De acuerdo a la sección 4. ¿Qué tipo de controles debe implementar el servicio para garantizar la seguridad de la información?"
-Salida:
-['4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico']
-
-### Ejemplo 3: Administración de Consola
-Pregunta: "De acuerdo a la sección 5. ¿Quién será responsable de administrar la consola de los servicios de Infraestructura?"
-Salida:
-['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo']
-
-### Ejemplo 4: Finalidad Pública
-Pregunta: "¿Qué dice la sección 2 'Finalidad Publica'?"
-Salida:
-['2. FINALIDAD PÚBLICA']
-
-### Ejemplo 5: Contenido de Sección Específica
-Pregunta: "¿Qué dice la sección 6.3.1.?"
-Salida:
-['6.3. Recursos a ser provistos por el proveedor', '6.3.1. Entregables del servicio', '6.3.2. Personal clave']
-
-## Instrucciones para el Análisis Actual
-
-Tu tarea es analizar la pregunta actual siguiendo el mismo enfoque de los ejemplos anteriores:
-
-1. Analizar el significado y contexto central de la pregunta.
-2. Evaluar la relevancia de cada título de sección de manera integral.
-3. Seleccionar los <k>{k}</k> títulos más relevantes basados en similitud semántica.
-4. Producir una lista clasificada de títulos de secciones.
-
-Requisitos:
-- Devolver EXACTAMENTE <k>{k}</k> títulos de secciones.
-- Basar las clasificaciones en relevancia semántica.
-- Mantener el orden original si hay empate en relevancia.
-
-Entrada:
-Pregunta: <pregunta>{question}</pregunta>
-Secciones Disponibles: <secciones>{section_titles}</secciones>
-
-Proporciona tu salida como un array JSON de los <k>{k}</k> títulos más relevantes.
-Si la respuesta no tiene <k>{k}</k> elementos se te considerará un mal analista. 
-Asimismo si la respuesta tiene elementos repetidos la respuesta sera considerada como incorrecta.
-"""
 
 
 @retry_with_logging()
 def classify_question_type(query: str) -> dict:
 
-    response_content = claude_call(bedrock=bedrock_runtime, query=CLASSIFY_QUESTION_PROMPT.format(query=query), system_message="")
+    response_content = claude_call(bedrock=bedrock_runtime, query=CLASSIFY_QUESTION_PROMPT_USER.format(query=query), system_message="")
     response = response_content['content'][0]['text']
     question_type = response.split()[-1]
 
@@ -394,11 +162,14 @@ def classify_question_type(query: str) -> dict:
         "question_type": question_type
     }
 
+# classify_question_type('¿Que dice la seccion 7.2?')
+# classify_question_type('Compara la seccion 5 de ambos documentos')
+
 
 @retry_with_logging()
 def check_sections_in_question(query: str) -> dict:
 
-    response_content = claude_call(bedrock=bedrock_runtime, query=CHECK_SECTIONS_PROMPT.format(query=query), system_message="")
+    response_content = claude_call(bedrock=bedrock_runtime, query=CHECK_SECTION_PROMPT_USER.format(query=query), system_message="")
     response = response_content['content'][0]['text']
 
     sections_in_question = remove_accents(response.split()[-1].lower())
@@ -414,58 +185,60 @@ class SortSectionTitles(BaseModel):
     key_list: list = Field(..., description="List of keys in the new order")
 
 
-@retry_with_logging()
-def get_topk_sections_from_question(question: str, keys_all: list, k: int = 3) -> list:
-    prompt = SIMILARITY_PROMPT.format(
-        question=question, 
-        section_titles=json.dumps(keys_all, ensure_ascii=False), 
-        k=k
-    )
+def extract_section_number(text: str):
+    """
+    Extrae el primer número de sección en formato 'X', 'X.', 'X.Y.', 'X.Y.Z.' del texto.
+    También detecta números enteros como '5' o jerarquías completas como '6.3.1.'.
+    """
+    match = re.search(r'\b\d+(\.\d+)*\b\.?', text)  # Permite números con o sin punto final
+    return match.group(0) if match else None
 
-    messages = [
-        {
-            "role": "user",
-            "content": [{"text": SYSTEM_SIMILARITY_PROMPT}],
-        },
-        {
-            "role": "user",
-            "content": [{"text": prompt}],
-        }
-    ]
 
-    tools = [convert_pydantic_to_bedrock_tool(SortSectionTitles, "Tool to reorder a list of section titles based on relevance to a question")]
-    response = bedrock_runtime.converse(
-        modelId="anthropic.claude-3-haiku-20240307-v1:0",
-        messages=messages,
-        inferenceConfig={
-            'maxTokens': 4096,
-            'temperature': 0,
-            'topP': 1,
-        },
-        toolConfig={
-            "tools": tools,
-            "toolChoice": {
-                "tool":{"name": "SortSectionTitles"},
-            }
-        },
-    )
-    topk_keys = response['output']['message']['content'][0]['toolUse']['input']['key_list']
+def sort_by_match(target: str, candidates: list) -> list:
+    def match_score(candidate):
+        matcher = SequenceMatcher(None, target, candidate)
+        return sum(block.size for block in matcher.get_matching_blocks())
+
+    return sorted(candidates, key=match_score, reverse=True)
+
+
+def prioritize_and_sort(target: str, candidates: list) -> list:
+    section_number = extract_section_number(target)
+    print(f"{section_number=}")
+    if section_number:
+        priority_candidates = [c for c in candidates if c.startswith(section_number)]
+        other_candidates = [c for c in candidates if not c.startswith(section_number)]
+    else:
+        priority_candidates = candidates
+        other_candidates = []
     
-    print(f"{keys_all=}")
-    print(f"{topk_keys=}")
+    sorted_priority = sort_by_match(target, priority_candidates)
+    sorted_others = sort_by_match(target, other_candidates)
 
-    try:
-        if not isinstance(topk_keys, list) or not all(isinstance(key, str) for key in topk_keys):
-            raise ValueError("Invalid response format from LLM.")
-        if not set(topk_keys).issubset(set(keys_all)):
-            raise ValueError("LLM returned unknown section titles.")
-        # if len(topk_keys) < k:
-        #     raise ValueError("LLM returned fewer section titles than requested.")
-    except Exception as e:
-        raise ValueError(f"Error parsing or validating LLM response: {e}")
+    return sorted_priority + sorted_others
 
-    return list(dict.fromkeys(topk_keys))[:3]
 
+def get_topk_sections_from_question(question: str, num_to_keys: dict, k: int = 10) -> list:
+    # print(f"{num_to_keys=}")
+    print(f"{question=}")
+
+    sorted_idxs = prioritize_and_sort(question, num_to_keys.keys())
+    # print(f"{sorted_idxs=}")
+    return [num_to_keys[v] for v in sorted_idxs][:k]
+
+"""
+index_tree = json.loads(open(f'../data/tree_tdr_v4.json', "r").read())
+num_to_section = {
+    k.split()[0] if 'ANEXO' not in k else k: k 
+    for k in sorted(list(get_all_keys(index_tree))) 
+}
+
+print(get_topk_sections_from_question("Que dice la seccion 5", num_to_section))
+print(get_topk_sections_from_question("Que dice la seccion 6.3.1", num_to_section))
+print(get_topk_sections_from_question("Que dicen los anexos", num_to_section))
+print(get_topk_sections_from_question('¿Que dice la seccion 7.2?', num_to_section))
+print(get_topk_sections_from_question('Compara la seccion 5 de ambos documentos', num_to_section))
+"""
 
 # -----------------------------------------------------------------------------
 # PROGRAM FUNCTIONS
@@ -514,8 +287,13 @@ def retrieve_sections_from_question_similarity(question: str) -> dict:
         print(f"\t -> {f_path=}")
         index_tree = json.loads(open(f'../data/tree_{os.path.basename(f_path).replace(".pdf", "")}.json', "r").read())
         keys_all = sorted(list(get_all_keys(index_tree)))
+        num_to_section = {
+            k.split()[0] if 'ANEXO' not in k else k: k 
+            for k in keys_all
+        }
 
-        document_sections = [(f_path, v) for v in get_topk_sections_from_question(question, keys_all)]
+        document_sections = [(f_path, v) for v in get_topk_sections_from_question(question, num_to_section)]
+        print(f"{document_sections=}")
         query_embedding = embed_call(bedrock_runtime, question)
 
         ranked_chunks = Session.execute(
@@ -534,7 +312,7 @@ def retrieve_sections_from_question_similarity(question: str) -> dict:
                 
         seen = set()
         rag_sections = [s for _, s, _, _ in ranked_chunks if not (s in seen or seen.add(s))]
-        print(f"{json.dumps(rag_sections, indent=2, ensure_ascii=False)}")
+        print(f"{rag_sections=}")
 
         retrieve_sections[f_path] = rag_sections
 
@@ -594,13 +372,13 @@ def general_qa_tool(question: str) -> str:
     ])
 
     context = context_format.format(entries=entries)
-    p = PROMPT.format(context=context, query=question)
+    p = ANSWER_QUESTION_PROMPT_USER.format(context=context, query=question)
 
     return {
         'sections': all_sections,
         'context': context,
         'prompt': p,
-        'system_prompt': SYSTEM_PROMPT,
+        'system_prompt': ANSWER_QUESTION_PROMPT_SYSTEM,
         'sections_in_question': has_sections,
         'sections_in_response': sections_in_response['response'],
     }
@@ -624,13 +402,13 @@ def compare_documents_tool(question: str) -> str:
     total_context = "\n\n".join(context_list)
     total_context = f"<TOTAL_CONTEXT>\n{total_context}\n</TOTAL_CONTEXT>"
 
-    p = PROMPT.format(context=total_context, query=question)
+    p = ANSWER_QUESTION_PROMPT_USER.format(context=total_context, query=question)
 
     return {
         'sections': sections_to_compare,
         'context': total_context,
         'prompt': p,
-        'system_prompt': SYSTEM_PROMPT
+        'system_prompt': ANSWER_QUESTION_PROMPT_SYSTEM
     }
 
 
@@ -697,10 +475,12 @@ def handle_query(q_a: tuple) -> dict:
 records = []
 for q_a in tqdm(QA, total=len(QA)):
     print(f"{q_a[0]=}")
-    try:
-        records.append(handle_query(q_a))
-    except Exception as e:
-        print(f"Error: {e}")
+    records.append(handle_query(q_a))
+
+    # try:
+    #     records.append(handle_query(q_a))
+    # except Exception as e:
+    #     print(f"Error: {e}")
 print(f"{records=}")
 
 

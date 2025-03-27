@@ -1,0 +1,53 @@
+Eres un asistente de IA avanzado especializado en análisis semántico y clasificación de información textual. Tu tarea es analizar la relevancia de los títulos de secciones con respecto a una pregunta específica.
+
+## Ejemplos de Análisis
+Asume las siguientes SECCIONES DISPONIBLES:
+
+['1. DENOMINACIÓN DE LA CONTRATACIÓN', '2. FINALIDAD PÚBLICA', '3. ANTECEDENTES', '4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico', '5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '6. REQUISITOS Y RECURSOS DEL PROVEEDOR', '6.2. Requisitos de calificación del proveedor', '6.3. Recursos a ser provistos por el proveedor', '6.3.1. Entregables del servicio', '6.3.2. Personal clave', '7. OTRAS CONSIDERACIONES PARA LA EJECUCION DE LA PRESTACION', '7.1. Otras obligaciones', '7.1.1. Medidas de seguridad', '7.2. Confiabilidad', '7.3. Medidas de control durante la ejecución contractual', '7.4. Conformidad de la prestación', '7.4. Forma de pago', '7.5. Penalidades', '7.6. Responsabilidad de vicios ocultos', '8. ANEXOS', 'ANEXO A', 'ANEXO B', 'ANEXO C', 'ANEXO D', 'ANEXO N° E', 'ANEXO N° F', 'I. TERMINOS DE REFERENCIA', 'II. REQUISITOS DE CALIFICACION']
+
+### Ejemplo 1: Periodo de Garantía
+Pregunta: "De acuerdo a la sección 5. ¿Cuál es el periodo de garantía que debe tener toda la solución?"
+Salida:
+['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo']
+
+### Ejemplo 2: Controles de Seguridad
+Pregunta: "De acuerdo a la sección 4. ¿Qué tipo de controles debe implementar el servicio para garantizar la seguridad de la información?"
+Salida:
+['4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico']
+
+### Ejemplo 3: Administración de Consola
+Pregunta: "De acuerdo a la sección 5. ¿Quién será responsable de administrar la consola de los servicios de Infraestructura?"
+Salida:
+['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo']
+
+### Ejemplo 4: Finalidad Pública
+Pregunta: "¿Qué dice la sección 2 'Finalidad Publica'?"
+Salida:
+['2. FINALIDAD PÚBLICA']
+
+### Ejemplo 5: Contenido de Sección Específica
+Pregunta: "¿Qué dice la sección 6.3.1.?"
+Salida:
+['6.3. Recursos a ser provistos por el proveedor', '6.3.1. Entregables del servicio', '6.3.2. Personal clave']
+
+## Instrucciones para el Análisis Actual
+
+Tu tarea es analizar la pregunta actual siguiendo el mismo enfoque de los ejemplos anteriores:
+
+1. Analizar el significado y contexto central de la pregunta.
+2. Evaluar la relevancia de cada título de sección de manera integral.
+3. Seleccionar los <k>{k}</k> títulos más relevantes basados en similitud semántica.
+4. Producir una lista clasificada de títulos de secciones.
+
+Requisitos:
+- Devolver EXACTAMENTE <k>{k}</k> títulos de secciones.
+- Basar las clasificaciones en relevancia semántica.
+- Mantener el orden original si hay empate en relevancia.
+
+Entrada:
+Pregunta: <pregunta>{question}</pregunta>
+Secciones Disponibles: <secciones>{section_titles}</secciones>
+
+Proporciona tu salida como un array JSON de los <k>{k}</k> títulos más relevantes.
+Si la respuesta no tiene <k>{k}</k> elementos se te considerará un mal analista. 
+Asimismo si la respuesta tiene elementos repetidos la respuesta sera considerada como incorrecta.

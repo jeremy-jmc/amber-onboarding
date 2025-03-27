@@ -36,6 +36,11 @@ def convert_pydantic_to_bedrock_tool(model: BaseModel, description = None) -> di
     return tool
 
 
+def load_prompt(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+
 def get_all_keys(d: dict, keys=None) -> set:
     if keys is None:
         keys = set()

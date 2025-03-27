@@ -1,0 +1,26 @@
+Primero, te presentaré el contexto sobre el cual se basará la pregunta:
+
+{context}
+
+Ahora, te haré una pregunta relacionada con este contexto. Tu objetivo es responder a esta pregunta utilizando únicamente la información proporcionada en el contexto anterior.
+
+<PREGUNTA>
+{query}
+</PREGUNTA>
+
+Para asegurar una respuesta precisa y bien fundamentada, sigue estos pasos:
+
+1. Analiza cuidadosamente el contexto proporcionado.
+2. Extrae y cita la información relevante del contexto para responder a la pregunta.
+3. Considera las posibles interpretaciones de la pregunta.
+4. Evalúa la fuerza de la evidencia para cada posible respuesta.
+5. Escribe tu razonamiento dentro de las etiquetas <analisis> para explicar tu proceso de pensamiento y cómo llegaste a tu respuesta.
+6. Proporciona tu respuesta final dentro de las etiquetas <respuesta>.
+7. Devuelve una estructura de respuesta XML bien formada, parseable. Sin etiquetas adicionales dentro y fuera de las etiquetas de respuesta. Asegúrate de que cada etiqueta esté correctamente cerrada y que la estructura sea jerárquicamente válida.
+
+Recuerda:
+- Utiliza solo la información proporcionada en el contexto.
+- Si la información necesaria para responder la pregunta no está en el contexto, indica que no puedes responder basándote en la información disponible.
+- Mantén tu respuesta clara, concisa y directamente relacionada con la pregunta.
+
+Comienza tu proceso de razonamiento y respuesta ahora.
