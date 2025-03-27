@@ -1,119 +1,25 @@
 from sqlalchemy import select
 from llm import bedrock_runtime, embed_call, claude_call
 import json
-import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import shutil
 from IPython.display import display
 import copy
-from db import *
 from tqdm import tqdm
-from metrics import *
 from langchain_aws import ChatBedrock
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-from pydantic import BaseModel, Field
 import logging
-from functools import wraps
 
+from db import *
+from metrics import *
+from utilities import *
+
+pd.set_option('display.max_colwidth', None)
+pd.set_option('display.max_columns', 50)
 np.set_printoptions(precision=3)
 
 
-def convert_pydantic_to_bedrock_tool(model: BaseModel, description = None) -> dict:
-    """
-    Converts a Pydantic model to a tool description for the Amazon Bedrock Converse API.
-    
-    Args:
-        model: The Pydantic model class to convert
-        description: Optional description of the tool's purpose
-
-    Returns:
-        Dict containing the Bedrock tool specification        
-    """
-    # Validate input model
-    if not isinstance(model, type) or not issubclass(model, BaseModel):
-        raise ValueError("Input must be a Pydantic model class")
-    
-    name = model.__name__
-    input_schema = model.model_json_schema()
-    tool = {
-        'toolSpec': {
-            'name': name,
-            'description': description or f"{name} Tool",
-            'inputSchema': {'json': input_schema }
-        }
-    }
-    return tool
-
-
-def retrieve_key_from_xml(xml_string: str, xml_key: str = 'respuesta') -> str:
-    try:
-        root = ET.fromstring(f"<root>{xml_string}</root>")  # Wrap in a root tag to handle multiple top-level elements
-        answer_element = root.find(xml_key)
-        return answer_element.text.strip() if answer_element is not None else None
-    except Exception as e:
-        raise e
-    # except ET.ParseError:
-    #     return None  # Handle invalid XML cases
-
-
-def get_all_keys(d: dict, keys=None) -> set:
-    if keys is None:
-        keys = set()
-    if isinstance(d, dict):
-        for k, v in d.items():
-            keys.add(k)
-            get_all_keys(v, keys)
-    elif isinstance(d, list):  # In case there are lists of dicts
-        for item in d:
-            get_all_keys(item, keys)
-    return keys
-
-
-def retry_with_logging(max_attempts=3, wait_time=2):
-    """
-    A decorator that adds retry logic with detailed logging for ValueError.
-    
-    Args:
-        max_attempts (int): Maximum number of retry attempts. Defaults to 3.
-        wait_time (int): Seconds to wait between retry attempts. Defaults to 2.
-    
-    Returns:
-        Decorated function with retry and logging capabilities.
-    """
-    def decorator(func):
-        @wraps(func)
-        @retry(
-            stop=stop_after_attempt(max_attempts), 
-            wait=wait_fixed(wait_time), 
-            retry=retry_if_exception_type(ValueError),
-            before_sleep=lambda retry_state: print(
-                f"Retry attempt {retry_state.attempt_number}: "
-                f"Retrying {func.__name__} due to ValueError. "
-                f"Reason: {retry_state.outcome.exception()}"
-            )
-        )
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-
 # https://github.com/amberpe/poc-rag-multidocs/blob/main/RAG.py#L218
-def search_similar_text(query, top_k=5) -> list[tuple]:
-    query_embedding = embed_call(bedrock_runtime, query)
-    return Session.execute(
-        select(
-            Embedding.document_name,
-            Embedding.section_name,
-            Embedding.chunk_content,
-            Embedding.embedding.cosine_distance(query_embedding['embedding']).label('cosine_distance')
-        )
-        .order_by(
-            Embedding.embedding.cosine_distance(query_embedding['embedding'])
-        ).limit(top_k)
-    )
-
 
 # Prompt Improver: https://console.anthropic.com/dashboard
 QA = [
@@ -122,10 +28,25 @@ QA = [
 
 # * Cross document question
     # Bien
-    ("¿Cual es la finalidad publica de los documentos?", ""), 
+    ("¿Cual es la finalidad publica de los documentos?", 
+     "La presente contratación pública tiene como finalidad mantener la operatividad y modernización de nuestra plataforma tecnológica, buscando elevar los niveles de eficiencia y satisfacción del personal administrativo, profesionales de la salud, usuarios internos y externos de EsSalud. Por la naturaleza del valor de los activos de información, por las mejores prácticas de seguridad y continuidad de los servicios, es necesario el fortalecimiento de las capacidades para la habilitación y validación de los niveles de transacción necesarios para despliegue de las aplicaciones, sobre el cual se brindará una atención oportuna a los asegurados y personal administrativo de EsSalud a nivel nacional, con la finalidad de asegurar la disponibilidad y confiabilidad de la documentación que generan las diferentes unidades orgánicas."), 
 
     # Bien
-    ("¿Cuales son los objetivos generales y especificos de la contratacion en los documentos?", ""),
+    ("¿Cuales son los objetivos generales y especificos de la contratacion en los documentos?", """
+Objetivo General:
+Contratar el Servicio de Infraestructura, Plataforma y Microservicios en Nube Pública 
+para el despliegue de las Aplicaciones y Nuevos Servicios de la Gerencia Central de 
+Tecnologías de Información y Comunicaciones de EsSalud.
+
+Objetivos Específicos:
+- Contar con un servicio que permita un alto rendimiento en capacidades de procesamiento, 
+  memoria, almacenamiento, comunicaciones, seguridad y redes a través de una Infraestructura 
+  Pública o nube pública.
+- Garantizar un alto nivel de seguridad en el despliegue de las aplicaciones de EsSalud.
+- Proporcionar un servicio garantizando el soporte técnico brindado por el fabricante. 
+  Asimismo, el servicio debe tener como alta prioridad la seguridad de la información, a través 
+  de diversos controles tanto lógicos como físicos.
+"""),
 
     # Bien
     ("¿Cuál es el porcentaje mínimo de disponibilidad que debe tener la infraestructura de Nube Pública?",
@@ -147,20 +68,62 @@ QA = [
     ("De acuerdo a la sección 5. ¿Quién será responsable de administrar la consola de los servicios de Infraestructura?",
         "La consola será manejada por el Especialista asignado por la Sub Gerencia de Operaciones de Tecnologías de Información de la Gerencia de Producción de la GCTIC."),
 
+    # ("¿Que se dice acerca del 'Servicio de visualización de datos en la nube'?", ""),     # GPT no la hace
+
+    ("¿Cual es la responsabilidad del postor durante la implementacion del servicio?", """
+El postor es responsable de:
+
+- Elaborar un plan de trabajo para la implementación del proyecto.
+- Diseñar la arquitectura de la solución con Infraestructura como Código (IaC) en dos ambientes: QA y PROD.
+- Implementar y diseñar el flujo de despliegue y entrega continua (CI/CD) para backend, frontend y móvil Android en QA y PROD.
+- Realizar hasta cinco pruebas de estrés end-to-end en QA para validar la conexión VPN Site-To-Site y la comunicación con APIs externos.
+- Asegurar la observabilidad de la aplicación, APIs y base de datos mediante herramientas de OpenTelemetry o similares.
+- Ejecutar hasta dos pruebas de ethical hacking y/o pentesting en una aplicación end-to-end que incluye backend, frontend y APIs.
+- Entregar informes técnicos detallados con mejoras de arquitectura y vulnerabilidades detectadas en las pruebas de seguridad.
+- Brindar soporte técnico 24/7 durante la duración del contrato.
+- Garantizar que todos los trabajadores cuenten con Seguro Complementario de Trabajo de Riesgo (SCTR).
+
+El proveedor deberá presentar la documentación de implementación en un plazo máximo de 30 días calendarios desde la firma del contrato.
+"""),
     # TODO: preguntas acerca de Anexos
 
 # * Section questions
-    ("Que dice la seccion 2 'Finalidad publica'?", ""),
-    ("Que dice la seccion 6.3.1.?", ""),
-    ("Explicame lo que dice en la seccion 5.5?", ""),
+    ("¿Que dice la seccion 2 'Finalidad publica'?", ""),
+    ("¿Que dice la seccion 6.3.1.?", ""),
+    ("Explicame lo que dice en la seccion 5.5", """
+La prestación del servicio será en el (Piso 6) de la Sede Central Essalud, ubicado en el Edificio Lima - Jr. Domingo Cueto 120 – Jesús María – Lima.
+
+La implementación del servicio será realizada en un plazo máximo de hasta treinta (30) días calendarios, contados a partir del día siguiente de la firma del contrato. La Sub Gerencia de Operaciones de Tecnologías de la Información y Sub Gerencia de Sistemas Aseguradores, Subsidios y Sociales – GCTIC, con el Proveedor suscribirán el Acta de Conformidad de Implementación (Anexo A), a más tardar a los cinco (05) días calendarios posteriores al término de la implementación, en caso no se presenten observaciones. Finalizada la implementación del servicio, se firmará el 'Acta de Inicio del Servicio' (Ver Anexo B), suscrita por el representante de la Sub Gerencia de Operaciones de TI y el Proveedor, para dar inicio al conteo de los trescientos sesenta y cinco (365) días calendarios de prestación del servicio.
+
+El plazo de prestación del servicio será de trescientos sesenta y cinco (365) días calendario, contados a partir del día siguiente de la firma del 'Acta de Inicio de Servicio'.
+     """),
 
 # * Comparative questions
-    ("¿Qué diferencias hay en la sección 2 'Finalidad publica'?", ""),       # ! FALLA -> Si pongo solo 2, confunde con romanos -> Si pongo el titulo de la seccion lo hace algo mejor    
-    ("¿Qué diferencias hay en la sección 6.3.1.?", "")
     
-    # Seccion 5.1: diferencias importantes
+    # No hay diferencias
+    ("¿Qué diferencias hay en la sección 2 'Finalidad publica'?", ""),
+    
+    # Seccion 5.1: diferencias importantes, pero contexto muy largo para la LLM
+    ("Cuales son las diferencias en la sección 5.1.?", ""),
+
+    # Hay diferencias
+    ("¿Qué diferencias hay en la sección 6.3.1.?", ""),
+    ("¿Las certificaciones requeridas para el proveedor de nube pública son las mismas en ambas versiones del documento?", 
+     "No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece​")
 ]
 
+RESET = False
+CALL_CLAUDE = True
+K = 10       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
+
+if RESET:
+    shutil.rmtree('../data/qa', ignore_errors=True)
+    os.makedirs('../data/qa', exist_ok=True)
+
+
+# -----------------------------------------------------------------------------
+# LLM FUNCTIONS
+# -----------------------------------------------------------------------------
 SYSTEM_PROMPT = """
 Eres un asistente de IA especializado en responder preguntas basadas en contextos proporcionados. Tu tarea es analizar el contexto dado, entender la pregunta y proporcionar una respuesta precisa y relevante en español.
 """
@@ -194,121 +157,253 @@ Recuerda:
 Comienza tu proceso de razonamiento y respuesta ahora.
 """
 
-SYSTEM_SIMILARITY_PROMPT = """
-You are an advanced AI assistant specialized in semantic analysis and ranking of textual information. Your core capabilities include:
 
-Deeply understanding the semantic context of questions
-Analyzing section titles with nuanced relevance assessment
-Providing precise, well-reasoned rankings based on semantic similarity
-Generating structured output that meets specific requirements
+CLASSIFY_QUESTION_PROMPT = """
+Eres un sistema sofisticado de clasificación de preguntas. Tu objetivo es categorizar una pregunta en una de dos categorías basándote en si se refiere a un solo documento o compara múltiples documentos.
 
-Key Guidelines:
+Objetivo de Clasificación:
+1. Si la pregunta trata sobre un solo documento: clasificar como 'general'
+2. Si la pregunta compara dos o más documentos: clasificar como 'comparativa'
 
-Prioritize semantic understanding over literal keyword matching
-Be thorough and systematic in your relevance assessment
-Provide clear, explainable reasoning for your rankings
-Strictly adhere to the output format requirements
-"""
+Proceso de Clasificación:
+Debes realizar un análisis detallado considerando:
+- Palabras o frases que indiquen una pregunta comparativa
+- Mención de múltiples documentos
+- Argumentos para clasificación 'general'
+- Argumentos para clasificación 'comparativa'
 
-SIMILARITY_PROMPT = """
-You are an advanced AI assistant specialized in semantic analysis and ranking of textual information. Your task is to analyze the relevance of section titles to a specific question and provide a ranked list of the most relevant titles.
+Ejemplos de Clasificación:
 
-Here is the question you need to analyze:
-
-<question>
-{question}
-</question>
-
-And here are the section titles you need to evaluate:
-
-<section_titles>
-{section_titles}
-</section_titles>
-
-Your goal is to return the <k>{k}</k> most relevant section titles based on their semantic similarity to the question. Follow these steps:
-
-1. Analyze the question's core meaning and context.
-2. Evaluate each section title's relevance comprehensively.
-3. Assign nuanced relevance scores.
-4. Produce a ranked list of section titles.
-5. Explain your reasoning.
-
-Important requirements:
-- You must return exactly <k>{k}</k> section titles.
-- Base your rankings on semantic relevance, not just keyword matching.
-- If multiple titles have equal relevance, maintain their original order.
-- Provide your analysis and reasoning in <semantic_analysis> tags before the final output.
-- Format the final output as a valid JSON array of strings.
-
-Conduct your analysis inside <semantic_analysis> tags:
-
-1. Identify and list the core concepts and themes in the question.
-2. For each section title:
-   - Note how it relates to the core concepts.
-   - Consider both obvious and non-obvious semantic connections.
-   - Assign a preliminary relevance score (1-10) with a brief justification.
-3. Create a preliminary ranking of all titles based on these scores.
-4. Refine your ranking by considering nuanced relationships between titles and the question.
-5. Provide a final ranking of the top <k>{k}</k> titles with detailed justifications.
-
-It's OK for this section to be quite long.
-
-After your analysis, provide the ranked list of <k>{k}</k> most relevant section titles in a JSON array. Ensure that your output adheres to all the specified requirements.
-
-Example output format:
-["Most Relevant Title", "Second Most Relevant", "Third Most Relevant"]
-
-Remember, this is just an example of the format. Your actual output should contain the real titles from the input, ranked according to your analysis.
-"""
-
-CALL_CLAUDE = True
-K = 10       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
-
-shutil.rmtree('../data/qa', ignore_errors=True)
-os.makedirs('../data/qa', exist_ok=True)
-
-
-def classify_question_type(query: str) -> str:
-    CLASSIFY_QUESTION_PROMPT = f"""
-You are a sophisticated question classification system. Your task is to categorize a given question into one of two categories based on whether it refers to a single document or compares multiple documents.
-
-Here is the question you need to classify:
-
-<question>
-{query}
-</question>
-
-Please follow these steps to classify the question:
-
-1. Analyze the question carefully, considering its content and structure.
-2. Determine if the question is about a single document or if it compares two or more documents.
-3. Classify the question as follows:
-   - If the question is about a single document, classify it as 'general'.
-   - If the question compares two or more documents, classify it as 'comparative'.
-
-In your classification process, consider the following:
-- List any keywords or phrases that might indicate a comparative question (e.g., "difference", "compare", "versus", "both").
-- Explicitly state whether multiple documents are mentioned in the question.
-- Consider arguments for classifying the question as 'general'.
-- Consider arguments for classifying the question as 'comparative'.
-- Make a final decision based on the strength of these arguments.
-
-After your analysis, provide your classification as a single word: either 'general' or 'comparative'.
-
-Example output:
+Ejemplo 1:
+Pregunta: "¿Cuál es el objetivo principal del documento?"
 <classification_process>
-Keywords indicating comparison: None found
-Multiple documents mentioned: No
-Arguments for 'general': The question asks about the main theme of a specific book, without mentioning any other documents.
-Arguments for 'comparative': None
-Decision: The question focuses on a single document's content without any comparative elements.
+Palabras clave que indican comparación: Ninguna encontrada
+Documentos múltiples mencionados: No
+Argumentos para 'general': La pregunta se enfoca en un único documento específico
+Argumentos para 'comparativa': Ninguno
+Decisión: Clasificación como 'general'
 </classification_process>
 general
 
-Please proceed with your classification process and final classification.
-    """
+Ejemplo 2:
+Pregunta: "Cuales son las diferencias en los anexos?"
+<classification_process>
+Palabras clave que indican comparación: "diferencias"
+Documentos múltiples mencionados: Sí (múltiples anexos)
+Argumentos para 'general': Ninguno
+Argumentos para 'comparativa': Solicitud explícita de comparación entre anexos
+Decisión: Clasificación como 'comparativa'
+</classification_process>
+comparativa
 
-    return claude_call(bedrock=bedrock_runtime, query=CLASSIFY_QUESTION_PROMPT, system_message=SYSTEM_PROMPT)
+Ejemplo 3:
+Pregunta: "¿Cuáles son los requerimientos principales del proyecto?"
+<classification_process>
+Palabras clave que indican comparación: Ninguna encontrada
+Documentos múltiples mencionados: No
+Argumentos para 'general': La pregunta busca información sobre un único proyecto
+Argumentos para 'comparativa': Ninguno
+Decisión: Clasificación como 'general'
+</classification_process>
+general
+
+Ejemplo 4:
+Pregunta: "En que se diferencia la seccion 7 de los documentos?"
+<classification_process>
+Palabras clave que indican comparación: "diferencia"
+Documentos múltiples mencionados: Sí (múltiples documentos)
+Argumentos para 'general': Ninguno
+Argumentos para 'comparativa': Comparación explícita de la sección 7 entre varios documentos
+Decisión: Clasificación como 'comparativa'
+</classification_process>
+comparativa
+
+Ejemplo 5:
+Pregunta: "¿En que se diferencia el ANEXO A?"
+<classification_process>
+Palabras clave que indican comparación: "diferencia"
+Documentos múltiples mencionados: Implícitamente (referencias a un ANEXO A específico)
+Argumentos para 'general': La pregunta parece centrarse en un único anexo
+Argumentos para 'comparativa': La palabra "diferencia" sugiere una comparación
+Decisión: Clasificación como 'comparativa'
+</classification_process>
+comparativa
+
+Pasos para Clasificar la Pregunta:
+1. Analiza cuidadosamente el contenido y la estructura de la pregunta
+2. Identifica si se trata de un solo documento o múltiples documentos
+3. Detecta palabras clave comparativas: "diferencia", "comparar", "versus", "ambos"
+4. Evalúa los argumentos para cada clasificación
+5. Toma una decisión final basada en la solidez de los argumentos
+
+Formato de Salida:
+- Proporciona un <classification_process> detallado
+- Indica la clasificación final como una sola palabra: 'general' o 'comparativa'
+
+Instrucción Final:
+Por favor, realiza el proceso de clasificación para la siguiente pregunta:
+<question>
+{query}
+</question>
+"""
+
+CHECK_SECTIONS_PROMPT = """
+Eres un sistema especializado en identificar referencias a secciones específicas en una pregunta.
+
+Objetivo:
+Determinar si la pregunta hace referencia a una sección específica de un documento.
+
+Criterios de Identificación:
+1. Patrones de secciones numeradas: "5.1", "7.2", "Sección 3", etc.
+2. Referencias a anexos: "Anexo A", "Anexo 1", "Apéndice B"
+3. Referencias a partes específicas: "capítulo", "página", "tabla", "figura"
+4. Palabras clave que sugieren referencia específica: "en", "de", "del"
+
+Proceso de Análisis:
+- Examinar la pregunta en busca de patrones numéricos o textuales de secciones
+- Considerar contexto y estructura de la referencia
+- Evaluar la especificidad de la mención
+
+Ejemplos:
+
+Ejemplo 1:
+Pregunta: "¿Cuál es el contenido de la sección 5.1?"
+<classification_process>
+Patron de sección identificado: "5.1"
+Tipo de referencia: Sección numerada
+Decisión: Si
+</classification_process>
+Si
+
+Ejemplo 2:
+Pregunta: "Describe el Anexo A del documento"
+<classification_process>
+Patron de sección identificado: "Anexo A"
+Tipo de referencia: Anexo específico
+Decisión: Si
+</classification_process>
+Si
+
+Ejemplo 3:
+Pregunta: "¿Cuál es el objetivo principal?"
+<classification_process>
+Patron de sección identificado: Ninguno
+Tipo de referencia: Pregunta general
+Decisión: No
+</classification_process>
+No
+
+Pasos para Análisis:
+1. Buscar patrones numéricos de secciones
+2. Identificar palabras clave de referencias específicas
+3. Evaluar el nivel de especificidad de la pregunta
+4. Tomar decisión final
+
+Instrucción Final:
+Analiza la siguiente pregunta:
+<question>
+{query}
+</question>
+"""
+
+SYSTEM_SIMILARITY_PROMPT = """
+Eres un asistente de IA avanzado especializado en análisis semántico y clasificación de información textual. Tus capacidades principales incluyen:
+Comprender profundamente el contexto semántico de las preguntas
+Analizar los títulos de secciones con una evaluación de relevancia matizada
+Proporcionar clasificaciones precisas y bien razonadas basadas en la similitud semántica
+Generar resultados estructurados que cumplan requisitos específicos
+
+Pautas Clave:
+Priorizar la comprensión semántica sobre la coincidencia literal de palabras clave
+Ser exhaustivo y sistemático en la evaluación de relevancia
+Proporcionar razonamientos claros y explicables para las clasificaciones
+Adherirse estrictamente a los requisitos de formato de salida
+"""
+
+SIMILARITY_PROMPT = """
+Eres un asistente de IA avanzado especializado en análisis semántico y clasificación de información textual. Tu tarea es analizar la relevancia de los títulos de secciones con respecto a una pregunta específica.
+
+## Ejemplos de Análisis
+Asume las siguientes SECCIONES DISPONIBLES:
+
+['1. DENOMINACIÓN DE LA CONTRATACIÓN', '2. FINALIDAD PÚBLICA', '3. ANTECEDENTES', '4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico', '5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '6. REQUISITOS Y RECURSOS DEL PROVEEDOR', '6.2. Requisitos de calificación del proveedor', '6.3. Recursos a ser provistos por el proveedor', '6.3.1. Entregables del servicio', '6.3.2. Personal clave', '7. OTRAS CONSIDERACIONES PARA LA EJECUCION DE LA PRESTACION', '7.1. Otras obligaciones', '7.1.1. Medidas de seguridad', '7.2. Confiabilidad', '7.3. Medidas de control durante la ejecución contractual', '7.4. Conformidad de la prestación', '7.4. Forma de pago', '7.5. Penalidades', '7.6. Responsabilidad de vicios ocultos', '8. ANEXOS', 'ANEXO A', 'ANEXO B', 'ANEXO C', 'ANEXO D', 'ANEXO N° E', 'ANEXO N° F', 'I. TERMINOS DE REFERENCIA', 'II. REQUISITOS DE CALIFICACION']
+
+### Ejemplo 1: Periodo de Garantía
+Pregunta: "De acuerdo a la sección 5. ¿Cuál es el periodo de garantía que debe tener toda la solución?"
+Salida:
+['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo']
+
+### Ejemplo 2: Controles de Seguridad
+Pregunta: "De acuerdo a la sección 4. ¿Qué tipo de controles debe implementar el servicio para garantizar la seguridad de la información?"
+Salida:
+['4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico']
+
+### Ejemplo 3: Administración de Consola
+Pregunta: "De acuerdo a la sección 5. ¿Quién será responsable de administrar la consola de los servicios de Infraestructura?"
+Salida:
+['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo']
+
+### Ejemplo 4: Finalidad Pública
+Pregunta: "¿Qué dice la sección 2 'Finalidad Publica'?"
+Salida:
+['2. FINALIDAD PÚBLICA']
+
+### Ejemplo 5: Contenido de Sección Específica
+Pregunta: "¿Qué dice la sección 6.3.1.?"
+Salida:
+['6.3. Recursos a ser provistos por el proveedor', '6.3.1. Entregables del servicio', '6.3.2. Personal clave']
+
+## Instrucciones para el Análisis Actual
+
+Tu tarea es analizar la pregunta actual siguiendo el mismo enfoque de los ejemplos anteriores:
+
+1. Analizar el significado y contexto central de la pregunta.
+2. Evaluar la relevancia de cada título de sección de manera integral.
+3. Seleccionar los <k>{k}</k> títulos más relevantes basados en similitud semántica.
+4. Producir una lista clasificada de títulos de secciones.
+
+Requisitos:
+- Devolver EXACTAMENTE <k>{k}</k> títulos de secciones.
+- Basar las clasificaciones en relevancia semántica.
+- Mantener el orden original si hay empate en relevancia.
+
+Entrada:
+Pregunta: <pregunta>{question}</pregunta>
+Secciones Disponibles: <secciones>{section_titles}</secciones>
+
+Proporciona tu salida como un array JSON de los <k>{k}</k> títulos más relevantes.
+Si la respuesta no tiene <k>{k}</k> elementos se te considerará un mal analista.
+"""
+
+
+@retry_with_logging()
+def classify_question_type(query: str) -> dict:
+
+    response_content = claude_call(bedrock=bedrock_runtime, query=CLASSIFY_QUESTION_PROMPT.format(query=query), system_message="")
+    response = response_content['content'][0]['text']
+    question_type = response.split()[-1]
+
+    assert question_type in ['general', 'comparativa'], f"Invalid question type: {question_type}"
+
+    return {
+        "response": response,
+        "question_type": question_type
+    }
+
+
+@retry_with_logging()
+def check_sections_in_question(query: str) -> dict:
+
+    response_content = claude_call(bedrock=bedrock_runtime, query=CHECK_SECTIONS_PROMPT.format(query=query), system_message="")
+    response = response_content['content'][0]['text']
+
+    sections_in_question = remove_accents(response.split()[-1].lower())
+    assert sections_in_question in ['si', 'no'], f"Invalid response: {sections_in_question}"
+
+    return {
+        "response": response,
+        "sections_in_question": True if sections_in_question == 'si' else False
+    }
 
 
 class SortSectionTitles(BaseModel):
@@ -360,77 +455,66 @@ def get_topk_sections_from_question(question: str, keys_all: list, k: int = 3) -
             raise ValueError("Invalid response format from LLM.")
         if not set(topk_keys).issubset(set(keys_all)):
             raise ValueError("LLM returned unknown section titles.")
-        if len(topk_keys) < k:
-            raise ValueError("LLM returned fewer section titles than requested.")
+        # if len(topk_keys) < k:
+        #     raise ValueError("LLM returned fewer section titles than requested.")
     except Exception as e:
         raise ValueError(f"Error parsing or validating LLM response: {e}")
 
-    return topk_keys[:k]
+    return list(dict.fromkeys(topk_keys))[:3]
 
+
+# -----------------------------------------------------------------------------
+# PROGRAM FUNCTIONS
+# -----------------------------------------------------------------------------
 
 def format_pg_section(doc: str, pg_section: str, pg_cntnt: str) -> str:
     tag = os.path.splitext(os.path.basename(doc))[0].upper()
     return f"\n\t|{tag}_CHUNK|\n|TAG|{pg_section}|/TAG|\n{pg_cntnt}\n\t|/{tag}_CHUNK|\n"
 
 
-def general_qa_tool(question: str) -> str:
-    retrieved_rag = search_similar_text(question, K)
-    context_format = """<CONTEXT>\n{entries}\n</CONTEXT>""".strip()
-
-    df_rag = pd.DataFrame(copy.deepcopy(list(retrieved_rag)), columns=['doc', 'section_name', 'section_cntnt', 'cosine_distance'])
-    query_df = df_rag[['doc', 'section_name']].drop_duplicates(subset=['section_name'], keep='first')
-    query_pairs = list(zip(query_df['doc'], query_df['section_name']))
-
-    retrieved_docs = Session.execute(
+def retrieve_sections_from_question_simple(question: str) -> dict:
+    query_embedding = embed_call(bedrock_runtime, question)
+    retrieved_rag = Session.execute(
         select(
-            DocumentSection.document_name,
-            DocumentSection.section_name,
-            DocumentSection.section_content
-        ).where(
-            or_(*(tuple_(DocumentSection.document_name, DocumentSection.section_name) == pair for pair in query_pairs))
-        )   # .distinct()
-    ).all()
+            Embedding.document_name,
+            Embedding.section_name,
+            Embedding.chunk_content,
+            Embedding.embedding.cosine_distance(query_embedding['embedding']).label('cosine_distance')
+        )
+        .order_by(
+            Embedding.embedding.cosine_distance(query_embedding['embedding'])
+        ).limit(K)
+    )
+    
+    df_rag = pd.DataFrame(copy.deepcopy(list(retrieved_rag)), columns=['doc', 'section_name', 'section_cntnt', 'cosine_distance'])
 
-    # Preserve the order of (doc, section_name) pairs
-    retrieved_docs = list(sorted(
-        retrieved_docs,
-        key=lambda x: (query_df['doc'].tolist().index(x.document_name), query_df['section_name'].tolist().index(x.section_name))
-    ))
-
-    assert len(list(retrieved_docs)) > 0, f"No se encontraron documentos similares para la pregunta: {question}"
-
-    print(f"{question=}")
-        
-    entries = "\n".join([
-        format_pg_section(doc, section, cntnt)
-        for doc, section, cntnt in retrieved_docs
-    ])
-
-    context = context_format.format(entries=entries)
-    p = PROMPT.format(context=context, query=question)
-
+    query_df = df_rag[['doc', 'section_name']].drop_duplicates(subset=['section_name'], keep='first')
+    
     return {
-        'context': context,
-        'prompt': p,
-        'system_prompt': SYSTEM_PROMPT
+        record['doc']: record['section_name']
+        for record in
+        query_df.groupby('doc')['section_name'].apply(list).reset_index().to_dict(orient='records')
     }
 
 
-def compare_documents_tool(question: str) -> str:
-    print(f"{question=}")
-
+def retrieve_sections_from_question_similarity(question: str) -> dict:
+    """
+    1. question -> top K index names 
+    2. RAG of query embeddings on filtered chunk table (by top K index names) to rerank the section names
+    3. Retrieve the reranked sections from document table
+    """
     retrieve_sections = {}
     for f_path in ['../data/tdr_v4.pdf', '../data/tdr_v6.pdf']:
 
         # Get Context From Each Document
         print(f"\t -> {f_path=}")
         index_tree = json.loads(open(f'../data/tree_{os.path.basename(f_path).replace(".pdf", "")}.json', "r").read())
-        keys_all = list(get_all_keys(index_tree))
+        keys_all = sorted(list(get_all_keys(index_tree)))
 
         document_sections = [(f_path, v) for v in get_topk_sections_from_question(question, keys_all)]
         query_embedding = embed_call(bedrock_runtime, question)
 
-        retrieved_chunks = Session.execute(
+        ranked_chunks = Session.execute(
             select(
                 Embedding.document_name,
                 Embedding.section_name,
@@ -444,10 +528,84 @@ def compare_documents_tool(question: str) -> str:
             ).order_by(text('cosine_distance')).limit(K)
         ).all()
                 
-        rag_sections = list(set([s for _, s, _, _ in retrieved_chunks]))
+        seen = set()
+        rag_sections = [s for _, s, _, _ in ranked_chunks if not (s in seen or seen.add(s))]
         print(f"{json.dumps(rag_sections, indent=2, ensure_ascii=False)}")
 
         retrieve_sections[f_path] = rag_sections
+
+    return retrieve_sections
+
+
+def retrieve_docs(file_path: str, sections: list) -> list:
+    retrieved_docs = Session.execute(
+        select(
+            DocumentSection.document_name,
+            DocumentSection.section_name,
+            DocumentSection.section_content
+        ).where(
+            DocumentSection.document_name == file_path,
+            DocumentSection.section_name.in_(sections)
+        )   # .distinct()
+    ).all()
+
+    return retrieved_docs
+
+
+def docs_to_context(file_path: str, docs: list) -> str:
+    entries = "\n".join([
+        format_pg_section(doc, section, cntnt)
+        for doc, section, cntnt in docs
+    ])
+    f_name = os.path.basename(file_path).replace(".pdf", "")
+    return f"<CONTEXT_{f_name}>\n{entries}\n</CONTEXT_{f_name}>".strip()
+
+
+def general_qa_tool(question: str) -> str:
+    context_format = """<CONTEXT>\n{entries}\n</CONTEXT>""".strip()
+    extracted_docs = []
+    all_sections = []
+
+    sections_in_response  = check_sections_in_question(question)
+    has_sections = sections_in_response['sections_in_question']
+
+    if has_sections:
+        extracted_sections = retrieve_sections_from_question_similarity(question)
+    else:
+        extracted_sections = retrieve_sections_from_question_simple(question)
+
+    for f_path, sections in extracted_sections.items():
+        print(f"{f_path=}")
+        extracted_docs.extend(retrieve_docs(f_path, sections))
+        all_sections.extend(sections)
+
+
+    assert len(list(extracted_docs)) > 0, f"No se encontraron documentos similares para la pregunta: {question}"
+
+    print(f"{question=}")
+        
+    entries = "\n".join([
+        format_pg_section(doc, section, cntnt)
+        for doc, section, cntnt in extracted_docs
+    ])
+
+    context = context_format.format(entries=entries)
+    p = PROMPT.format(context=context, query=question)
+
+    return {
+        'sections': all_sections,
+        'context': context,
+        'prompt': p,
+        'system_prompt': SYSTEM_PROMPT,
+        'sections_in_question': has_sections,
+        'sections_in_response': sections_in_response['response'],
+    }
+
+
+def compare_documents_tool(question: str) -> str:
+    print(f"{question=}")
+
+    retrieve_sections = retrieve_sections_from_question_similarity(question)    
 
     sections_to_compare = list(set(retrieve_sections['../data/tdr_v4.pdf']).intersection(set(retrieve_sections['../data/tdr_v6.pdf'])))
     print(f"{sections_to_compare=}")
@@ -455,23 +613,8 @@ def compare_documents_tool(question: str) -> str:
 
     context_list = []
     for f_path in ['../data/tdr_v4.pdf', '../data/tdr_v6.pdf']:
-        retrieved_docs = Session.execute(
-            select(
-                DocumentSection.document_name,
-                DocumentSection.section_name,
-                DocumentSection.section_content
-            ).where(
-                DocumentSection.document_name == f_path,
-                DocumentSection.section_name.in_(sections_to_compare)
-            )   # .distinct()
-        ).all()
-
-        entries = "\n".join([
-            format_pg_section(doc, section, cntnt)
-            for doc, section, cntnt in retrieved_docs
-        ])
-        f_name = os.path.basename(f_path).replace(".pdf", "")
-        context_doc = f"<CONTEXT_{f_name}>\n{entries}\n</CONTEXT_{f_name}>".strip()
+        retrieved_docs = retrieve_docs(f_path, sections_to_compare)
+        context_doc = docs_to_context(f_path, retrieved_docs)
         context_list.append(context_doc)
 
     total_context = "\n\n".join(context_list)
@@ -480,6 +623,7 @@ def compare_documents_tool(question: str) -> str:
     p = PROMPT.format(context=total_context, query=question)
 
     return {
+        'sections': sections_to_compare,
         'context': total_context,
         'prompt': p,
         'system_prompt': SYSTEM_PROMPT
@@ -488,34 +632,38 @@ def compare_documents_tool(question: str) -> str:
 
 def handle_query(q_a: tuple) -> dict:
     q, a = q_a
-    question_type_response = classify_question_type(q)['content'][0]['text']
-    question_type = question_type_response.split()[-1]
-
     query_to_fname = q.replace('¿', '').replace('?', '').replace(' ', '_').lower()
     query_to_fname = ''.join(e for e in query_to_fname if e.isalnum() or e == '_')[:50]
 
-    retrieval_dict: dict = None
-    # retrieval_dict = compare_documents_tool(q)
+    question_type_response = classify_question_type(q)
+    question_type = question_type_response['question_type']
+
+    retrieval_dict: dict = {
+        'question': q,
+        'question_type': question_type, 
+        'question_type_response': question_type_response['response']
+    }
+
+    print(f"{q=}")
+    # print(f"{question_type_response=}")
+    print(f"{question_type=}")
 
     if question_type == 'general':
-        retrieval_dict = general_qa_tool(q)
-    elif question_type == 'comparative':
-        retrieval_dict = compare_documents_tool(q)
+        retrieval_dict = {**retrieval_dict, **general_qa_tool(q)}
+    elif question_type == 'comparativa':
+        retrieval_dict = {**retrieval_dict, **compare_documents_tool(q)}
     else:
         raise ValueError(f"Invalid question type: {question_type}")
 
-    print(f"{q=}")
-    print(f"{question_type_response=}")
-    print(f"{question_type=}")
     
-    print(json.dumps(retrieval_dict, indent=2, ensure_ascii=False))
+    
+    # print(json.dumps(retrieval_dict, indent=2, ensure_ascii=False))
 
     if 'prompt' in retrieval_dict and len(retrieval_dict['prompt']):
-        with open(f'../data/qa/prompt-{K}-{query_to_fname}.txt', 'w') as f:
+        with open(f'../data/qa/{question_type}-prompt-{K}-{query_to_fname}.txt', 'w') as f:
             f.write(retrieval_dict['prompt'])
 
-
-    if len(retrieval_dict) and CALL_CLAUDE:
+    if 'prompt' in retrieval_dict and CALL_CLAUDE:
         response: dict = claude_call(bedrock_runtime, retrieval_dict['system_prompt'], retrieval_dict['prompt'])
         # print(json.dumps(response['content'], indent=2, ensure_ascii=False))
 
@@ -526,21 +674,17 @@ def handle_query(q_a: tuple) -> dict:
         else:
             b_score = None
 
-        retrieval_dict['response'] = {
-            'question': q,
-            'question_type': question_type,
-            'answer': a,
-            'llm_response': llm_answer,
-            # 'bleu_dict': bleu.compute(predictions=[llm_answer], references=[answer]),
-            # 'rouge_dict': rouge.compute(predictions=[llm_answer], references=[answer]),
-            # 'meteor_dict': meteor.compute(predictions=[llm_answer], references=[answer]),
-            'bert_score_dict': b_score
-        }
+        retrieval_dict['answer'] = a
+        retrieval_dict['llm_response'] = llm_answer
+        retrieval_dict['bert_score_dict'] = b_score
+        # 'bleu_dict': bleu.compute(predictions=[llm_answer], references=[answer]),
+        # 'rouge_dict': rouge.compute(predictions=[llm_answer], references=[answer]),
+        # 'meteor_dict': meteor.compute(predictions=[llm_answer], references=[answer]),
 
-        with open(f'../data/qa/response-{K}-{query_to_fname}.json', 'w') as f:
+        with open(f'../data/qa/{question_type}-response-{K}-{query_to_fname}.json', 'w') as f:
             f.write(json.dumps(response, indent=2, ensure_ascii=False))
 
-        with open(f'../data/qa/response-{K}-{query_to_fname}.txt', 'w') as f:
+        with open(f'../data/qa/{question_type}-response-{K}-{query_to_fname}.txt', 'w') as f:
             f.write(llm_answer)
 
     return retrieval_dict
@@ -548,13 +692,14 @@ def handle_query(q_a: tuple) -> dict:
 
 records = []
 for q_a in tqdm(QA, total=len(QA)):
+    print(f"{q_a[0]=}")
     records.append(handle_query(q_a))
 print(f"{records=}")
 
 
 if CALL_CLAUDE:
-    df = pd.DataFrame([r['response'] for r in records if 'response' in r])
-    # display(df)
+    df = pd.DataFrame([r for r in records if len(r)])
+    display(df)
 
     # df['bleu'] = df['bleu_dict'].apply(lambda x: x['bleu'])
     # df['rouge1'] = df['rouge_dict'].apply(lambda x: x['rouge1'])
@@ -565,7 +710,7 @@ if CALL_CLAUDE:
 
     metric_list = ['bert_score']    # 'bleu', 'rouge1', 'rouge2', 'rougeL', 'meteor', 
 
-    display(df[['question', 'answer', 'llm_response'] + metric_list].sort_values(by=metric_list, ascending=True))
+    display(df[['question_type', 'sections_in_question', 'question', 'sections', 'answer', 'llm_response'] + metric_list].sort_values(by=metric_list, ascending=True))
 
 """
     Preguntas de comprensión general
@@ -586,3 +731,4 @@ if CALL_CLAUDE:
 ¿Cual es la finalidad publica de los documentos?
 ¿Cuales son los objetivos generales y especificos de la contratacion en los documentos?
 """
+
