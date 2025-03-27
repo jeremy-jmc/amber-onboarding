@@ -13,6 +13,9 @@ import logging
 from db import *
 from metrics import *
 from utilities import *
+import warnings
+
+warnings.filterwarnings("ignore")
 
 pd.set_option('display.max_colwidth', None)
 pd.set_option('display.max_columns', 50)
@@ -372,7 +375,8 @@ Pregunta: <pregunta>{question}</pregunta>
 Secciones Disponibles: <secciones>{section_titles}</secciones>
 
 Proporciona tu salida como un array JSON de los <k>{k}</k> títulos más relevantes.
-Si la respuesta no tiene <k>{k}</k> elementos se te considerará un mal analista.
+Si la respuesta no tiene <k>{k}</k> elementos se te considerará un mal analista. 
+Asimismo si la respuesta tiene elementos repetidos la respuesta sera considerada como incorrecta.
 """
 
 
@@ -693,7 +697,10 @@ def handle_query(q_a: tuple) -> dict:
 records = []
 for q_a in tqdm(QA, total=len(QA)):
     print(f"{q_a[0]=}")
-    records.append(handle_query(q_a))
+    try:
+        records.append(handle_query(q_a))
+    except Exception as e:
+        print(f"Error: {e}")
 print(f"{records=}")
 
 
