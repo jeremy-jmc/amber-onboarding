@@ -118,9 +118,9 @@ El plazo de prestación del servicio será de trescientos sesenta y cinco (365) 
      "No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece​")
 ]
 
-RESET = False
+RESET = True
 CALL_CLAUDE = True
-K = 10       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
+K = 5       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
 
 if RESET:
     shutil.rmtree('../data/qa', ignore_errors=True)
@@ -180,18 +180,33 @@ def check_sections_in_question(query: str) -> dict:
         "sections_in_question": True if sections_in_question == 'si' else False
     }
 
+# print(json.dumps(
+#     check_sections_in_question('¿Que dice la seccion 7.2?'), indent=2))
+# print(json.dumps(
+#     check_sections_in_question('Compara la seccion 5 de ambos documentos'), indent=2))
+# print(json.dumps(
+#     check_sections_in_question('De acuerdo a las secciones 5 y 6.3.1. ¿Cuales son las diferencias?'), indent=2))
+# print(json.dumps(
+#     check_sections_in_question('De acuerdo a la seccion 4. ¿Que dice acerca de la seguridad de la informacion?'), indent=2))
+
 
 class SortSectionTitles(BaseModel):
     key_list: list = Field(..., description="List of keys in the new order")
 
 
-def extract_section_number(text: str):
+def get_section_references(text: str) -> list:
     """
-    Extrae el primer número de sección en formato 'X', 'X.', 'X.Y.', 'X.Y.Z.' del texto.
-    También detecta números enteros como '5' o jerarquías completas como '6.3.1.'.
+    Extrae todos los números de sección en formato 'X', 'X.Y', 'X.Y.Z' del texto.
+    Detecta números enteros como '5' y jerarquías completas como '6.3.1'.
     """
-    match = re.search(r'\b\d+(\.\d+)*\b\.?', text)  # Permite números con o sin punto final
-    return match.group(0) if match else None
+    matches = re.findall(r'\b\d+(?:\.\d+)*\b', text)  # Encuentra todas las coincidencias
+    return matches if matches else []
+
+# print(get_section_references('¿Que dice la seccion 7.2?'))
+# print(get_section_references('Compara la seccion 5 de ambos documentos'))
+# print(get_section_references('De acuerdo a las secciones 5 y 6.3.1. ¿Cuales son las diferencias?'))
+# print(get_section_references('De acuerdo a la seccion 4. ¿Que dice acerca de la seguridad de la informacion?'))
+
 
 
 def sort_by_match(target: str, candidates: list) -> list:
@@ -202,28 +217,41 @@ def sort_by_match(target: str, candidates: list) -> list:
     return sorted(candidates, key=match_score, reverse=True)
 
 
-def prioritize_and_sort(target: str, candidates: list) -> list:
-    section_number = extract_section_number(target)
-    print(f"{section_number=}")
-    if section_number:
-        priority_candidates = [c for c in candidates if c.startswith(section_number)]
-        other_candidates = [c for c in candidates if not c.startswith(section_number)]
-    else:
-        priority_candidates = candidates
-        other_candidates = []
+def prioritize_and_sort(question: str, candidates: list) -> list:
+    section_references = get_section_references(question)
     
-    sorted_priority = sort_by_match(target, priority_candidates)
-    sorted_others = sort_by_match(target, other_candidates)
+    priority_candidates = []
+    other_candidates = []
+    for section_number in section_references:
+        print(f"{section_number=}")
+        if section_number:
+            top_level_section = section_number.split('.')[0]
+            # p_c = [c for c in candidates if c.startswith(section_number) or section_number.startswith(c)]
+            p_c = [
+                c for c in candidates if c.startswith(top_level_section)
+            ]
+            o_c = [c for c in candidates if c not in p_c]
+        else:
+            p_c = candidates
+            o_c = []
+
+        priority_candidates.extend(p_c)
+        other_candidates.extend(o_c)
+        # print(f"{p_c=}")
+        # print(f"{o_c=}")
+
+    sorted_priority = sort_by_match(question, priority_candidates)
+    sorted_others = sort_by_match(question, other_candidates)
 
     return sorted_priority + sorted_others
 
 
 def get_topk_sections_from_question(question: str, num_to_keys: dict, k: int = 10) -> list:
     # print(f"{num_to_keys=}")
-    print(f"{question=}")
+    # print(f"{question=}")
 
     sorted_idxs = prioritize_and_sort(question, num_to_keys.keys())
-    # print(f"{sorted_idxs=}")
+    # print(f"{sorted_idxs[:k]=}")
     return [num_to_keys[v] for v in sorted_idxs][:k]
 
 """
@@ -238,6 +266,7 @@ print(get_topk_sections_from_question("Que dice la seccion 6.3.1", num_to_sectio
 print(get_topk_sections_from_question("Que dicen los anexos", num_to_section))
 print(get_topk_sections_from_question('¿Que dice la seccion 7.2?', num_to_section))
 print(get_topk_sections_from_question('Compara la seccion 5 de ambos documentos', num_to_section))
+print(get_topk_sections_from_question('De acuerdo a las secciones 5 y 6.3.1. ¿Cuales son las diferencias?', num_to_section))
 """
 
 # -----------------------------------------------------------------------------

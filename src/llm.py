@@ -88,7 +88,8 @@ def claude_body(system_prompt: str, query: str):
         "system": system_prompt,
         "messages": query,
         "temperature": 0.0,
-
+        # TODO: research "top_p" and "top_k"
+        # "top_k": 0,
     })
 
 # Llamada al LLM

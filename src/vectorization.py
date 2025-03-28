@@ -48,7 +48,7 @@ IDEAS:
 """
 
 
-# # TODO: try DocLing
+# # Try DocLing
 # from io import BytesIO
 # from docling.datamodel.base_models import DocumentStream
 # from docling.document_converter import DocumentConverter
@@ -224,6 +224,7 @@ def get_docs(file_path: str) -> list[Document]:
     sectioned_chunks = split_text_by_headings(cleaned_doc, original_splitters)
     print(f"{len(sectioned_chunks)=}")
 
+    # * save sections in database
     for section, section_content in sectioned_chunks.items():
         record = DocumentSection(document_name=file_path, section_name=section_mapping_original_to_clean[section], section_content=section_content)
         Session.add(record)
@@ -261,7 +262,7 @@ def get_docs(file_path: str) -> list[Document]:
 
 if __name__ == '__main__':
     
-    FILE_PATH = '../data/tdr_v4.pdf'
+    FILE_PATH = '../data/tdr_v6.pdf'
     docs_metadata = get_docs(FILE_PATH)
     docs = docs_metadata['docs']
 
@@ -302,7 +303,7 @@ if __name__ == '__main__':
     """
 
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=250, chunk_overlap=50, add_start_index=True
+        chunk_size=500, chunk_overlap=150, add_start_index=True
     )
 
     all_splits = text_splitter.split_documents(docs)
@@ -372,7 +373,7 @@ if __name__ == '__main__':
     https://www.datacamp.com/tutorial/pgvector-tutorial
     """
 
-    # Entire document
+    # * save chunks in database
     for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
         new_embedding = Embedding(
             # page_index=all_splits[idx].metadata['page_index'],
