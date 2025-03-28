@@ -10,12 +10,12 @@ from langchain_core.documents import Document
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
 from db import *
+import pymupdf4llm
+import pathlib
+
 
 load_dotenv('../.env')
 
-
-FILE_PATH = '../data/tdr_v4.pdf'
-# get file name
 
 # -----------------------------------------------------------------------------
 # Read PDF
@@ -37,31 +37,6 @@ for d in tqdm(docs, total=len(docs), desc="Saving pages"):
         f.write(d.page_content)
 """
 
-# import pymupdf
-
-# doc: pymupdf.Document = pymupdf.open(FILE_PATH)
-
-# for page in doc:
-#     print(page.get_text())
-#     break
-
-# print(doc.get_page_text(0))
-# print(doc.get_page_text(1))
-
-# # re.sub(r'(?<!\.)\n(?!\n)', ' ', doc.get_page_text(i))
-# docs = [
-#     Document(page_content=doc.get_page_text(i), metadata={"page_index": i + 1})
-#     for i in range(len(doc)) if i != 1 # (omitiendo el indice)
-# ]
-
-# print(docs[0])
-
-# shutil.rmtree('../data/page_extraction/pymupdf', ignore_errors=True)
-# os.makedirs('../data/page_extraction/pymupdf', exist_ok=True)
-# for d in tqdm(docs, total=len(docs), desc="Saving pages"):
-#     with open(f'../data/page_extraction/pymupdf/{os.path.basename(FILE_PATH).replace(".pdf", "")}_page_{d.metadata["page_index"]}.txt', 'w') as f:
-#         f.write(d.page_content)
-
 """
 get_text_blocks()
 get_text_words()
@@ -70,8 +45,8 @@ get_text_trace()
 
 IDEAS:
 - Preprocess more the text to remove noise like '\n' in the middle of sentences.
-
 """
+
 
 # # TODO: try DocLing
 # from io import BytesIO
@@ -85,30 +60,28 @@ IDEAS:
 # result = converter.convert(source)
 
 
-import pymupdf4llm
-import pathlib
+def parse_pdf(file_path: str) -> list[str]:
+    md_text = pymupdf4llm.to_markdown(file_path)    # , page_chunks=True
+    # print(type(md_text))
 
-md_text = pymupdf4llm.to_markdown(FILE_PATH)    # , page_chunks=True
+    pathlib.Path(f"../data/{file_path.replace('.pdf', '')}.md").write_bytes(md_text.encode())
 
-type(md_text)
+    pages_md = md_text.split('\n-----\n')
+    # print(f"{len(pages_md)=}")
 
+    header = [
+        '**Gerencia Central de Tecnologías de Información y Comunicaciones**',
+        'Servicio de Infraestructura, Plataforma y Microservicios en Nube Pública para el despliegue de las Aplicaciones y Nuevos Servicios de la Gerencia',
+        'Central de Tecnologías de Información y Comunicaciones de Essalud',
+    ]
 
-pathlib.Path(f"../data/{FILE_PATH.replace('.pdf', '')}.md").write_bytes(md_text.encode())
+    pages_md = [[v.strip() for v in p.split('\n') if len(v)] for p in pages_md]
 
-pages_md = md_text.split('\n-----\n')
-print(f"{len(pages_md)=}")
+    filtered_pages_md = [s[:-1] if len(s) > 1 and s[-1].startswith('Página') else s for s in pages_md]
 
-header = [
-    '**Gerencia Central de Tecnologías de Información y Comunicaciones**',
-    'Servicio de Infraestructura, Plataforma y Microservicios en Nube Pública para el despliegue de las Aplicaciones y Nuevos Servicios de la Gerencia',
-    'Central de Tecnologías de Información y Comunicaciones de Essalud',
-]
+    filtered_pages_md = [[v.strip() for v in s if v not in header] for s in filtered_pages_md]
 
-pages_md = [[v.strip() for v in p.split('\n') if len(v)] for p in pages_md]
-
-filtered_pages_md = [s[:-1] if len(s) > 1 and s[-1].startswith('Página') else s for s in pages_md]
-
-filtered_pages_md = [[v.strip() for v in s if v not in header] for s in filtered_pages_md]
+    return filtered_pages_md
 
 
 def get_sections(page: list[str]) -> list[str]:
@@ -220,185 +193,207 @@ def create_index_xml(path_list: list) -> str:   # , chunk_content: str
     return reparsed.toprettyxml(indent="\t", newl='\n').replace('<?xml version="1.0" ?>\n', '')
 
 
-sections = [get_sections(page) for idx, page in enumerate(filtered_pages_md) if idx > 1]
+def clean_doc(file_path: str, filtered_pages_md: list[str]) -> str:
+    cleaned_pages = ['\n'.join(ls) for ls in filtered_pages_md if len(ls) > 1]
 
-for tup in sections:
-    if len(tup):
-        print([f for f, s in tup])
+    print(f"{len(cleaned_pages)=}")
+    cleaned_doc: str = '\n\n\n'.join(cleaned_pages)
 
-cleaned_pages = ['\n'.join(ls) for ls in filtered_pages_md if len(ls) > 1]
+    with open(f'../data/cleaned_doc_{os.path.basename(file_path).replace(".pdf", "")}.md', 'w', encoding='utf-8') as f:
+        f.write(cleaned_doc)
 
-print(f"{len(cleaned_pages)=}")
-cleaned_doc: str = '\n\n\n'.join(cleaned_pages)
-
-with open(f'../data/cleaned_doc_{os.path.basename(FILE_PATH).replace(".pdf", "")}.md', 'w', encoding='utf-8') as f:
-    f.write(cleaned_doc)
-
-original_tups = [t for tup_list in sections for t in tup_list]
-section_mapping_original_to_clean = {s: f for f, s in original_tups}
-original_splitters = [s for f, s in original_tups]
-
-print(f"{len(original_splitters)=}")
-
-# ! manually created tree, bc there are only two documents to compare
-tree = json.loads(open(f'../data/tree_{os.path.basename(FILE_PATH).replace(".pdf", "")}.json', 'r').read())
-print(json.dumps(tree, indent=2, ensure_ascii=False))
-
-# ! chunks no incluyen la caratula por la naturaleza de las secciones
-sectioned_chunks = split_text_by_headings(cleaned_doc, original_splitters)
-print(f"{len(sectioned_chunks)=}")
-
-for section, section_content in sectioned_chunks.items():
-    record = DocumentSection(document_name=FILE_PATH, section_name=section_mapping_original_to_clean[section], section_content=section_content)
-    Session.add(record)
-Session.commit()
-
-# filtered empty sections
-sectioned_chunks = {k: v for k, v in sectioned_chunks.items() if len(v.replace(k, ''))}
-print(json.dumps(sectioned_chunks, indent=2, ensure_ascii=False))
-
-for k, v in sectioned_chunks.items():
-    print(k, len(v))
-
-docs = [
-    # Document(page_content=p, metadata={"page_index": i + 1})
-    # for i, p in enumerate(pages_md)
-    # # if i != 1 # (omitiendo el indice)
-    Document(page_content=v, metadata={"section": get_section_to_root_path(tree, section_mapping_original_to_clean[k])})
-    for idx, (k, v) in enumerate(sectioned_chunks.items())
-]
-for d in docs:
-    d.metadata['xml_header'] = create_index_xml(d.metadata['section'])
-
-check = True
-if check:
-    idx_page = random.randint(0, len(docs) - 1)
-    sample_page = docs[idx_page]
-
-    # print(sample_page.metadata)
-    # print(json.dumps(sample_page.metadata, indent=2, ensure_ascii=False))
-
-    print(f"{sample_page.metadata['xml_header']}<content>\n{sample_page.page_content}\n</content>")
+    return cleaned_doc
 
 
-shutil.rmtree('../data/page_extraction/pymupdf4llm', ignore_errors=True)
-os.makedirs('../data/page_extraction/pymupdf4llm', exist_ok=True)
-for idx, d in tqdm(enumerate(docs), total=len(docs), desc="Saving pages"):
-    with open(f'../data/page_extraction/pymupdf4llm/{os.path.basename(FILE_PATH).replace(".pdf", "")}_chunk_{idx}.txt', 'w', encoding='utf-8') as f:
-        f.write(f"{d.metadata['section']}\n\n{d.page_content}")
+def get_docs(file_path: str) -> list[Document]:
+    filtered_pages_md = parse_pdf(file_path)
+
+    sections = [get_sections(page) for idx, page in enumerate(filtered_pages_md) if idx > 1]
+    # for tup in sections:
+    #     if len(tup):
+    #         print([f for f, s in tup])
+
+    cleaned_doc = clean_doc(file_path, filtered_pages_md)
+    original_tups = [t for tup_list in sections for t in tup_list]
+    section_mapping_original_to_clean = {s: f for f, s in original_tups}
+    original_splitters = [s for f, s in original_tups]
+    # print(f"{len(original_splitters)=}")
 
 
-# -----------------------------------------------------------------------------
-# Chunking / Splitting
-# -----------------------------------------------------------------------------
+    # chunks no incluyen la caratula por la naturaleza de las secciones
+    sectioned_chunks = split_text_by_headings(cleaned_doc, original_splitters)
+    print(f"{len(sectioned_chunks)=}")
 
-# https://python.langchain.com/api_reference/text_splitters/character/langchain_text_splitters.character.RecursiveCharacterTextSplitter.html
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+    for section, section_content in sectioned_chunks.items():
+        record = DocumentSection(document_name=file_path, section_name=section_mapping_original_to_clean[section], section_content=section_content)
+        Session.add(record)
+    Session.commit()
 
-"""
-chunk_size, chunk_overlap
-100 50 -> Reduce la cantidad de secciones retornadas, aumentando la calidad porque rankea chunks mas peque;os de una seccion y evita que se filtren otras, menor varianza de secciones
-250 50
-500 50
-800 80
-1000 100
-1000 300
-1000 500
-"""
+    # * filtered empty sections
+    sectioned_chunks = {k: v for k, v in sectioned_chunks.items() if len(v.replace(k, ''))}
+    print(json.dumps(sectioned_chunks, indent=2, ensure_ascii=False))
+    # for k, v in sectioned_chunks.items():
+    #     print(k, len(v))
 
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=250, chunk_overlap=50, add_start_index=True
-)
+    # ! manually created tree, bc there are only two documents to compare
+    tree = json.loads(open(f'../data/tree_{os.path.basename(file_path).replace(".pdf", "")}.json', 'r').read())
+    # print(json.dumps(tree, indent=2, ensure_ascii=False))
 
-all_splits = text_splitter.split_documents(docs)
-
-# all_splits = text_splitter.split_documents(docs)
-
-# all_splits = []
-# for doc in docs:
-#     splits = text_splitter.split_text(doc.page_content)  # Splitting content
-#     for split in splits:
-#         all_splits.append({
-#             "page_content": split,
-#             "metadata": doc.metadata  # Preserve original metadata (page number/page hierarchy)
-#         })
-# all_splits = [Document(page_content=split['page_content'], metadata=split['metadata']) for split in all_splits]
-
-print(len(all_splits))
-print(dir(all_splits[0]))
-print(all_splits[400].page_content)
-print(json.dumps(all_splits[400].metadata, indent=2, ensure_ascii=False))
-
-# for idx, split in enumerate(all_splits):
-#     print(f"{split.metadata['xml_header']}<content>\n{split.page_content}\n</content>\n\n")
-#     if idx > 25:
-#         break
-
-"""
-Study more about the Splitters algorithms/methods.
-How can I split obtain meaningful chunks joining text between pages before splitting.
-"""
+    docs = [
+        # Document(page_content=p, metadata={"page_index": i + 1})
+        # for i, p in enumerate(pages_md)
+        # # if i != 1 # (omitiendo el indice)
+        Document(page_content=v, metadata={"section": get_section_to_root_path(tree, section_mapping_original_to_clean[k])})
+        for idx, (k, v) in enumerate(sectioned_chunks.items())
+    ]
+    for d in docs:
+        d.metadata['xml_header'] = create_index_xml(d.metadata['section'])
+    
+    return {
+        "cleaned_doc": cleaned_doc,
+        "docs": docs,
+        "tree": tree,
+        "sections": sections,
+        "sectioned_chunks": sectioned_chunks,
+        "section_mapping_original_to_clean": section_mapping_original_to_clean
+    }
 
 
-# -----------------------------------------------------------------------------
-# Embedding
-# ----------------------------------------------------------------------------- 
+if __name__ == '__main__':
+    
+    FILE_PATH = '../data/tdr_v4.pdf'
+    docs_metadata = get_docs(FILE_PATH)
+    docs = docs_metadata['docs']
 
-from llm import bedrock_runtime, embed_call
+    check = True
+    if check:
+        idx_page = random.randint(0, len(docs) - 1)
+        sample_page = docs[idx_page]
 
-def format_chunk_content(chunk: Document) -> str:
-    # section_formatted = '\n'.join(chunk.metadata['section']).upper()
-    # return f"{section_formatted}\n\n{chunk.page_content}"
-    return f"{chunk.metadata['xml_header']}<content>\n{chunk.page_content}\n</content>"
+        # print(sample_page.metadata)
+        # print(json.dumps(sample_page.metadata, indent=2, ensure_ascii=False))
 
-# SRC: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/use-xml-tags#example-legal-contract-analysis
-all_embs = [
-    embed_call(bedrock_runtime, format_chunk_content(split))
-    for split in tqdm(all_splits, total=len(all_splits), desc="Get embeddings")
-]
+        print(f"{sample_page.metadata['xml_header']}<content>\n{sample_page.page_content}\n</content>")
 
-# idx = random.randint(0, len(all_splits))
-# sample_chunk = all_splits[idx]
-# chunk_emb: dict = embed_call(bedrock_runtime, sample_chunk.page_content)
-# # chunk_emb.keys()
-# # chunk_emb['embeddingsByType'].keys()
-# # chunk_emb['inputTextTokenCount']
-# emb = chunk_emb['embedding']
 
-"""
-How can I track the costs of my experiments?
-"""
+    shutil.rmtree('../data/page_extraction/pymupdf4llm', ignore_errors=True)
+    os.makedirs('../data/page_extraction/pymupdf4llm', exist_ok=True)
+    for idx, d in tqdm(enumerate(docs), total=len(docs), desc="Saving pages"):
+        with open(f'../data/page_extraction/pymupdf4llm/{os.path.basename(FILE_PATH).replace(".pdf", "")}_chunk_{idx}.txt', 'w', encoding='utf-8') as f:
+            f.write(f"{d.metadata['section']}\n\n{d.page_content}")
 
-# -----------------------------------------------------------------------------
-# Save to Vector Database
-# -----------------------------------------------------------------------------
 
-"""
-https://www.datacamp.com/tutorial/pgvector-tutorial
-"""
+    # -----------------------------------------------------------------------------
+    # Chunking / Splitting
+    # -----------------------------------------------------------------------------
 
-# Entire document
-for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
+    # https://python.langchain.com/api_reference/text_splitters/character/langchain_text_splitters.character.RecursiveCharacterTextSplitter.html
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    """
+    chunk_size, chunk_overlap
+    100 50 -> Reduce la cantidad de secciones retornadas, aumentando la calidad porque rankea chunks mas peque;os de una seccion y evita que se filtren otras, menor varianza de secciones
+    250 50
+    500 50
+    800 80
+    1000 100
+    1000 300
+    1000 500
+    """
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=250, chunk_overlap=50, add_start_index=True
+    )
+
+    all_splits = text_splitter.split_documents(docs)
+
+    # all_splits = text_splitter.split_documents(docs)
+
+    # all_splits = []
+    # for doc in docs:
+    #     splits = text_splitter.split_text(doc.page_content)  # Splitting content
+    #     for split in splits:
+    #         all_splits.append({
+    #             "page_content": split,
+    #             "metadata": doc.metadata  # Preserve original metadata (page number/page hierarchy)
+    #         })
+    # all_splits = [Document(page_content=split['page_content'], metadata=split['metadata']) for split in all_splits]
+
+    print(len(all_splits))
+    print(dir(all_splits[0]))
+    print(all_splits[400].page_content)
+    print(json.dumps(all_splits[400].metadata, indent=2, ensure_ascii=False))
+
+    # for idx, split in enumerate(all_splits):
+    #     print(f"{split.metadata['xml_header']}<content>\n{split.page_content}\n</content>\n\n")
+    #     if idx > 25:
+    #         break
+
+    """
+    Study more about the Splitters algorithms/methods.
+    How can I split obtain meaningful chunks joining text between pages before splitting.
+    """
+
+
+    # -----------------------------------------------------------------------------
+    # Embedding
+    # ----------------------------------------------------------------------------- 
+
+    from llm import bedrock_runtime, embed_call
+
+    def format_chunk_content(chunk: Document) -> str:
+        # section_formatted = '\n'.join(chunk.metadata['section']).upper()
+        # return f"{section_formatted}\n\n{chunk.page_content}"
+        return f"{chunk.metadata['xml_header']}<content>\n{chunk.page_content}\n</content>"
+
+    # SRC: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/use-xml-tags#example-legal-contract-analysis
+    all_embs = [
+        embed_call(bedrock_runtime, format_chunk_content(split))
+        for split in tqdm(all_splits, total=len(all_splits), desc="Get embeddings")
+    ]
+
+    # idx = random.randint(0, len(all_splits))
+    # sample_chunk = all_splits[idx]
+    # chunk_emb: dict = embed_call(bedrock_runtime, sample_chunk.page_content)
+    # # chunk_emb.keys()
+    # # chunk_emb['embeddingsByType'].keys()
+    # # chunk_emb['inputTextTokenCount']
+    # emb = chunk_emb['embedding']
+
+    """
+    How can I track the costs of my experiments?
+    """
+
+    # -----------------------------------------------------------------------------
+    # Save to Vector Database
+    # -----------------------------------------------------------------------------
+
+    """
+    https://www.datacamp.com/tutorial/pgvector-tutorial
+    """
+
+    # Entire document
+    for idx, emb in tqdm(enumerate(all_embs), total=len(all_embs), desc="Saving embeddings"):
+        new_embedding = Embedding(
+            # page_index=all_splits[idx].metadata['page_index'],
+            section_name=all_splits[idx].metadata['section'][-1],
+            document_name=FILE_PATH,
+            chunk_content=format_chunk_content(all_splits[idx]),
+            embedding=emb['embedding']
+        )
+
+        Session.add(new_embedding)
+    Session.commit()
+
+    """
+    # Individual sample
     new_embedding = Embedding(
-        # page_index=all_splits[idx].metadata['page_index'],
-        section_name=all_splits[idx].metadata['section'][-1],
+        page_index=sample_chunk.metadata['page_index'],
         document_name=FILE_PATH,
-        chunk_content=format_chunk_content(all_splits[idx]),
+        page_content=sample_chunk.page_content,
         embedding=emb['embedding']
     )
 
     Session.add(new_embedding)
-Session.commit()
-
-"""
-# Individual sample
-new_embedding = Embedding(
-    page_index=sample_chunk.metadata['page_index'],
-    document_name=FILE_PATH,
-    page_content=sample_chunk.page_content,
-    embedding=emb['embedding']
-)
-
-Session.add(new_embedding)
-Session.commit()
-"""
+    Session.commit()
+    """
