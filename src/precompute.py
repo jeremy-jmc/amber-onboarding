@@ -56,7 +56,10 @@ def remove_accents(text: str) -> str:
 def clean_text(t: str) -> str:
     t = remove_accents(t)
     # t = re.sub(r'\s+', ' ', t)
-    return re.sub(r'(?<=[a-z\(\[]) *\n *(?=[a-z\)\]])', ' ', t)
+    t = re.sub(r'^\s*\n', '', t, flags=re.MULTILINE)        # remove blank lines
+    t = re.sub(r'(?<=[a-z])\n(?=[a-z])', ' ', t)    # remove endlines between lowercase letters
+    return t
+# re.sub(r'(?<=[a-z\(\[]) *\n *(?=[a-z\)\]])', ' ', t)
 
 
 def is_trivial_change(frag1: str, frag2: str) -> bool:
@@ -64,12 +67,31 @@ def is_trivial_change(frag1: str, frag2: str) -> bool:
     return frag1.strip() == frag2.strip()
 
 
-def get_diffs(doc1: Document, doc2: Document, custom_name: str = ""):
-    display(doc1)
-    display(doc2)
+def groupping_ranges(df, threshold = 100):
 
-    text1 = clean_text(doc1.page_content)   # .replace("\n", " ")
-    text2 = clean_text(doc2.page_content)   # .replace("\n", " ")
+    merged_ranges = []
+    current_range = df.iloc[0].copy()
+
+    for i in range(1, len(df)):
+        row = df.iloc[i]
+        
+        if current_range['i2'] + threshold >= row['i1']:
+            current_range['i2'] = max(current_range['i2'], row['i2'])
+            current_range['j1'] = min(current_range['j1'], row['j1'])
+            current_range['j2'] = max(current_range['j2'], row['j2'])
+        else:
+            merged_ranges.append(current_range)
+            current_range = row.copy()
+
+    merged_ranges.append(current_range)
+    df_merged = pd.DataFrame(merged_ranges)
+
+    return df_merged
+
+
+def get_diffs(doc1: Document, doc2: Document, custom_name: str = ""):
+    text1 = clean_text(doc1.page_content)
+    text2 = clean_text(doc2.page_content)
 
     differ = ndiff(text1.splitlines(), text2.splitlines())
     # print(f"{differ=}")
@@ -98,65 +120,76 @@ def get_diffs(doc1: Document, doc2: Document, custom_name: str = ""):
         if is_trivial_change(frag1, frag2):
             continue  # Omitir cambios triviales
 
-        if tag == 'equal':
-            # print(matcher.a[i1:i2])
-            continue
-        elif tag == 'replace':
-            print(f"\t{matcher.a[i1:i2]=}")
-            print(f"\t{matcher.b[j1:j2]=}")
-            
-            change_score = SequenceMatcher(None, frag1, frag2).ratio()
-            print(f"\t(Score: {change_score:.2f}) | Replace: {frag1} -> {frag2}")
-        elif tag == 'delete':
-            print(f"\t{matcher.a[i1:i2]=}")
-
-            change_score = SequenceMatcher(None, frag1, "").ratio()
-            print(f"\t(Score: {change_score:.2f}) | Delete: {frag1}")
-            
-        elif tag == 'insert':
-            print(f"\t{matcher.b[j1:j2]=}")
-
-            frag2 = text2[j1:j2]
-            change_score = SequenceMatcher(None, "", frag2).ratio()
-            print(f"\t(Score: {change_score:.2f}) | Insert: {frag2}")
-
-        print(f"\t{frag1=}")
-        print(f"\t{frag2=}")
-
         diff_list.append({
             "tag": tag,
-            "label": f"{tag}: text1[{i1}:{i2}] ({frag1}) -> text2[{j1}:{j2}] ({frag2})",
-            "text1": frag1,
-            "text2": frag2,
+            # "label": f"{tag}: text1[{i1}:{i2}] -> text2[{j1}:{j2}]",
+            # "text1": frag1,
+            # "text2": frag2,
             "i1": i1,
             "i2": i2,
             "j1": j1,
             "j2": j2,
-            "chunk1": text1[max(i1-CHARACTER_SHIFT, 0):min(i2+CHARACTER_SHIFT, len(text1))],
-            "chunk2": text2[max(j1-CHARACTER_SHIFT, 0):min(j2+CHARACTER_SHIFT, len(text2))],
-            "diff": diff,
+            "chunk_size1": i2 - i1,
+            "chunk_size2": j2 - j1,
+            # "chunk1": text1[max(i1-CHARACTER_SHIFT, 0):min(i2+CHARACTER_SHIFT, len(text1))],
+            # "chunk2": text2[max(j1-CHARACTER_SHIFT, 0):min(j2+CHARACTER_SHIFT, len(text2))],
         })
+
+    df_diff = (
+        pd.DataFrame(diff_list)
+        # .groupby(["chunk1", "chunk2"])
+        # .agg({"label": list})
+        # .reset_index(drop=False)
+    )
+    # display(df_diff)
     
-    df_diff = pd.DataFrame(diff_list).groupby(
-        ["chunk1", "chunk2"]
-    ).agg({
-        "label": list
-    }).reset_index(drop=False)
-    return df_diff
+    if len(df_diff):
+        df_diff = groupping_ranges(df_diff)
+
+    bounds_t1 = max(df_diff['i1'].min() - CHARACTER_SHIFT, 0), min(df_diff['i2'].max() + CHARACTER_SHIFT, len(text1))
+    bounds_t2 = max(df_diff['j1'].min() - CHARACTER_SHIFT, 0), min(df_diff['j2'].max() + CHARACTER_SHIFT, len(text2))
+
+    different_t1 = text1[bounds_t1[0]:bounds_t1[1]]
+    different_t2 = text2[bounds_t2[0]:bounds_t2[1]]
+
+    return df_diff, {
+        "text1": different_t1,
+        "text2": different_t2,
+        "bounds_t1": bounds_t1,
+        "bounds_t2": bounds_t2,
+        "similarity": SequenceMatcher(None, different_t1, different_t2).ratio(),
+    }
 
 
 automatic_seq_idxs = []
 total_diffs = {}
+
+sections_diff = []
 for idx, (s4, s6) in enumerate(zip(sections_v4, sections_v6)):
     # print(f"{idx=}")
-    if idx != 6:
-        continue
+    # if idx != 5:
+    #     continue
     
     try:
-        diff_list = get_diffs(docs_tdr4_map[s4], docs_tdr6_map[s6], f"{idx}")
+        diff_list, summary_dict = get_diffs(docs_tdr4_map[s4], docs_tdr6_map[s6], f"{idx}")
         if len(diff_list):
             automatic_seq_idxs.append(idx)
-        total_diffs[idx] = (s4, s6, diff_list)
+        total_diffs[idx] = (idx, s4, s6, diff_list)
+        
+        sections_diff.append({
+            "idx": idx,
+            "section_v4": s4,
+            "section_v6": s6,
+            # "bounds_t1": summary_dict['bounds_t1'],
+            # "bounds_t2": summary_dict['bounds_t2'],
+            "text1": summary_dict['text1'],
+            "text2": summary_dict['text2'],
+            "length1": len(summary_dict['text1']),
+            "length2": len(summary_dict['text2']),
+            "similarity": summary_dict['similarity'],
+        })
+        # print(f"\t{s4}")
+        # display(diff_list)
     except KeyError:
         print("KeyError")
     except Exception as e:
@@ -164,13 +197,18 @@ for idx, (s4, s6) in enumerate(zip(sections_v4, sections_v6)):
         raise e
     # break
 
+display(pd.DataFrame(sections_diff))
+
 # for chunk in diff_list:
 #     print(json.dumps(chunk, indent=2, ensure_ascii=False))
 print(f"{automatic_seq_idxs=}")
 
+df_new = pd.DataFrame()
+for tup in total_diffs.values():
+    df_new = pd.concat([df_new, tup[3].assign(idx=tup[0])], ignore_index=True)
+display(df_new)
 
-total_diffs[6][2]
-
+# total_diffs[6][2]
 
 
 sequence_matcher_idxs = \

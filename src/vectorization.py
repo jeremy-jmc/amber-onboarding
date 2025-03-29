@@ -226,9 +226,13 @@ def get_docs(file_path: str) -> list[Document]:
 
     # * save sections in database
     for section, section_content in sectioned_chunks.items():
-        record = DocumentSection(document_name=file_path, section_name=section_mapping_original_to_clean[section], section_content=section_content)
-        Session.add(record)
-    Session.commit()
+        try:
+            record = DocumentSection(document_name=file_path, section_name=section_mapping_original_to_clean[section], section_content=section_content)
+            Session.add(record)
+            Session.commit()
+        except IntegrityError:
+            Session.rollback()
+            print(f"Section '{section_mapping_original_to_clean[section]}' is already saved in the database.")
 
     # * filtered empty sections
     sectioned_chunks = {k: v for k, v in sectioned_chunks.items() if len(v.replace(k, ''))}

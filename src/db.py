@@ -1,4 +1,6 @@
 import os
+import sqlalchemy
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String, Boolean
@@ -28,9 +30,8 @@ class Embedding(Base):
 class DocumentSection(Base):
     __tablename__ = 'document_sections'
 
-    id = Column(Integer, primary_key=True, index=True)
-    document_name = Column(String(50))
-    section_name = Column(String(250))
+    document_name = Column(String(50), primary_key=True, nullable=False)
+    section_name = Column(String(250), primary_key=True, nullable=False)
     section_content = Column(String)
 
 
