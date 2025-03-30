@@ -12,6 +12,7 @@ import xml.dom.minidom
 from db import *
 import pymupdf4llm
 import pathlib
+from utilities import *
 
 
 load_dotenv('../.env')
@@ -248,11 +249,11 @@ def get_docs(file_path: str) -> list[Document]:
         # Document(page_content=p, metadata={"page_index": i + 1})
         # for i, p in enumerate(pages_md)
         # # if i != 1 # (omitiendo el indice)
-        Document(page_content=v, metadata={"section": get_section_to_root_path(tree, section_mapping_original_to_clean[k])})
+        Document(page_content=clean_text(v), metadata={"section": get_section_to_root_path(tree, section_mapping_original_to_clean[k])})
         for idx, (k, v) in enumerate(sectioned_chunks.items())
     ]
     for d in docs:
-        d.metadata['xml_header'] = create_index_xml(d.metadata['section'])
+        d.metadata['xml_header'] = d.metadata['section'][-1] + "\n" + create_index_xml(d.metadata['section'])
     
     return {
         "cleaned_doc": cleaned_doc,

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from functools import wraps
 import unicodedata
 import xml.etree.ElementTree as ET
+import re
 
 
 def remove_accents(text: str) -> str:
@@ -93,3 +94,18 @@ def retrieve_key_from_xml(xml_string: str, xml_key: str = 'respuesta') -> str:
     # except ET.ParseError:
     #     return None  # Handle invalid XML cases
 
+
+def remove_accents(text: str) -> str:
+    """Elimina las tildes de un texto"""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+
+
+def clean_text(t: str) -> str:
+    t = remove_accents(t)
+    # t = re.sub(r'\s+', ' ', t)
+    t = re.sub(r'^\s*\n', '', t, flags=re.MULTILINE)        # remove blank lines
+    t = re.sub(r'(?<=[a-z])\n(?=[a-z])', ' ', t)    # remove endlines between lowercase letters
+    return t

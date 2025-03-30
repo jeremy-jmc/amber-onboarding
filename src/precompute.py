@@ -45,22 +45,6 @@ assert sections_v4 == sections_v6
 # print(json.dumps(tv4_dict['tree'], indent=2, ensure_ascii=False))
 # print(json.dumps(tv6_dict['tree'], indent=2, ensure_ascii=False))
 
-def remove_accents(text: str) -> str:
-    """Elimina las tildes de un texto"""
-    return ''.join(
-        c for c in unicodedata.normalize('NFD', text)
-        if unicodedata.category(c) != 'Mn'
-    )
-
-
-def clean_text(t: str) -> str:
-    t = remove_accents(t)
-    # t = re.sub(r'\s+', ' ', t)
-    t = re.sub(r'^\s*\n', '', t, flags=re.MULTILINE)        # remove blank lines
-    t = re.sub(r'(?<=[a-z])\n(?=[a-z])', ' ', t)    # remove endlines between lowercase letters
-    return t
-# re.sub(r'(?<=[a-z\(\[]) *\n *(?=[a-z\)\]])', ' ', t)
-
 
 def is_trivial_change(frag1: str, frag2: str) -> bool:
     """ Devuelve True si la diferencia es solo por espacios o saltos de línea """
@@ -112,7 +96,7 @@ def get_diffs(doc1: Document, doc2: Document, custom_name: str = ""):
     
     diff_list = []
     for tag, i1, i2, j1, j2 in op_codes:
-        print(f"{tag}: text1[{i1}:{i2}] -> text2[{j1}:{j2}]")
+        # print(f"{tag}: text1[{i1}:{i2}] -> text2[{j1}:{j2}]")
 
         frag1 = matcher.a[i1:i2]
         frag2 = matcher.b[j1:j2]
@@ -121,75 +105,58 @@ def get_diffs(doc1: Document, doc2: Document, custom_name: str = ""):
             continue  # Omitir cambios triviales
 
         diff_list.append({
-            "tag": tag,
-            # "label": f"{tag}: text1[{i1}:{i2}] -> text2[{j1}:{j2}]",
-            # "text1": frag1,
-            # "text2": frag2,
+            # "tag": tag,
             "i1": i1,
             "i2": i2,
             "j1": j1,
             "j2": j2,
-            "chunk_size1": i2 - i1,
-            "chunk_size2": j2 - j1,
-            # "chunk1": text1[max(i1-CHARACTER_SHIFT, 0):min(i2+CHARACTER_SHIFT, len(text1))],
-            # "chunk2": text2[max(j1-CHARACTER_SHIFT, 0):min(j2+CHARACTER_SHIFT, len(text2))],
+            # "chunk_size1": i2 - i1,
+            # "chunk_size2": j2 - j1,
         })
 
-    df_diff = (
-        pd.DataFrame(diff_list)
-        # .groupby(["chunk1", "chunk2"])
-        # .agg({"label": list})
-        # .reset_index(drop=False)
-    )
-    # display(df_diff)
+    df_diff = pd.DataFrame(diff_list)
     
     if len(df_diff):
         df_diff = groupping_ranges(df_diff)
 
-    bounds_t1 = max(df_diff['i1'].min() - CHARACTER_SHIFT, 0), min(df_diff['i2'].max() + CHARACTER_SHIFT, len(text1))
-    bounds_t2 = max(df_diff['j1'].min() - CHARACTER_SHIFT, 0), min(df_diff['j2'].max() + CHARACTER_SHIFT, len(text2))
+        df_diff["chunk_v4"] = df_diff.apply(
+            lambda row: text1[max(row["i1"]-CHARACTER_SHIFT, 0):min(row["i2"]+CHARACTER_SHIFT, len(text1))],
+            axis=1
+        )
+        df_diff["chunk_v6"] = df_diff.apply(
+            lambda row: text2[max(row["j1"]-CHARACTER_SHIFT, 0):min(row["j2"]+CHARACTER_SHIFT, len(text2))],
+            axis=1
+        )
+        df_diff = df_diff.drop_duplicates(subset=["chunk_v4", "chunk_v6"])
+        # df_diff["text1"] = df_diff.apply(
+        #     lambda row: text1[row["i1"]:row["i2"]],
+        #     axis=1
+        # )
+        # df_diff["text2"] = df_diff.apply(
+        #     lambda row: text2[row["j1"]:row["j2"]],
+        #     axis=1
+        # )
 
-    different_t1 = text1[bounds_t1[0]:bounds_t1[1]]
-    different_t2 = text2[bounds_t2[0]:bounds_t2[1]]
-
-    return df_diff, {
-        "text1": different_t1,
-        "text2": different_t2,
-        "bounds_t1": bounds_t1,
-        "bounds_t2": bounds_t2,
-        "similarity": SequenceMatcher(None, different_t1, different_t2).ratio(),
-    }
+    return df_diff
 
 
 automatic_seq_idxs = []
 total_diffs = {}
 
-sections_diff = []
 for idx, (s4, s6) in enumerate(zip(sections_v4, sections_v6)):
     # print(f"{idx=}")
     # if idx != 5:
     #     continue
     
     try:
-        diff_list, summary_dict = get_diffs(docs_tdr4_map[s4], docs_tdr6_map[s6], f"{idx}")
+        diff_list = get_diffs(docs_tdr4_map[s4], docs_tdr6_map[s6], f"{idx}")
         if len(diff_list):
             automatic_seq_idxs.append(idx)
-        total_diffs[idx] = (idx, s4, s6, diff_list)
-        
-        sections_diff.append({
-            "idx": idx,
-            "section_v4": s4,
-            "section_v6": s6,
-            # "bounds_t1": summary_dict['bounds_t1'],
-            # "bounds_t2": summary_dict['bounds_t2'],
-            "text1": summary_dict['text1'],
-            "text2": summary_dict['text2'],
-            "length1": len(summary_dict['text1']),
-            "length2": len(summary_dict['text2']),
-            "similarity": summary_dict['similarity'],
-        })
-        # print(f"\t{s4}")
-        # display(diff_list)
+        total_diffs[idx] = (idx, s4, s6, diff_list.assign(
+            idx=idx,
+            section_v4=s4,
+            section_v6=s6
+        ))
     except KeyError:
         print("KeyError")
     except Exception as e:
@@ -197,36 +164,27 @@ for idx, (s4, s6) in enumerate(zip(sections_v4, sections_v6)):
         raise e
     # break
 
-display(pd.DataFrame(sections_diff))
-
-# for chunk in diff_list:
-#     print(json.dumps(chunk, indent=2, ensure_ascii=False))
 print(f"{automatic_seq_idxs=}")
 
-df_new = pd.DataFrame()
+df_total_diffs = pd.DataFrame()
 for tup in total_diffs.values():
-    df_new = pd.concat([df_new, tup[3].assign(idx=tup[0])], ignore_index=True)
-display(df_new)
+    df_total_diffs = pd.concat([df_total_diffs, tup[3].assign(idx=tup[0])], ignore_index=True)
+df_total_diffs['chunk_length_v4'] = df_total_diffs['chunk_v4'].apply(len)
+df_total_diffs['chunk_length_v4'] = df_total_diffs['chunk_v4'].apply(len)
 
+# df_total_diffs.groupby('idx').size()
 # total_diffs[6][2]
 
 
-sequence_matcher_idxs = \
-    [5, 6, 7, 8, 11, 15, 17, 19, 20, 23, 24, 26, 27, 28, 30, 34, 35, 36, 37, 38]
+def add_records_from_dataframe(df: pd.DataFrame):
+    records = [SectionDiff(
+        section_v4=row['section_v4'],
+        section_v6=row['section_v6'],
+        chunk_v4=row['chunk_v4'],
+        chunk_v6=row['chunk_v6']
+    ) for _, row in df.iterrows()]
+    Session.bulk_save_objects(records)
+    Session.commit()
 
-attnt_idxs = [
-    6, 7, 8, 15, 17, 23, 26, 34, 38
-]
+add_records_from_dataframe(df_total_diffs[['section_v4', 'section_v6', 'chunk_v4', 'chunk_v6']])
 
-for idx, (s4, s6) in enumerate(zip(sections_v4, sections_v6)):
-    # print(f"{idx=}, {s4=}, {s6=}")
-    if idx not in sequence_matcher_idxs + automatic_seq_idxs:
-        continue
-    
-    try:
-        get_diffs(docs_tdr4_map[s4], docs_tdr6_map[s6], f"{idx}")
-    except KeyError:
-        pass
-    except Exception as e:
-        print("Fallo")
-        raise e

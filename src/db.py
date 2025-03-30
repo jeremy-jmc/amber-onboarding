@@ -3,7 +3,7 @@ import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, Text
 from sqlalchemy import select
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import and_, or_, tuple_, text, distinct
@@ -33,6 +33,15 @@ class DocumentSection(Base):
     document_name = Column(String(50), primary_key=True, nullable=False)
     section_name = Column(String(250), primary_key=True, nullable=False)
     section_content = Column(String)
+
+
+class SectionDiff(Base):
+    __tablename__ = 'section_diffs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    section_v4 = Column(String(255), nullable=False)
+    section_v6 = Column(String(255), nullable=False)
+    chunk_v4 = Column(Text, nullable=False)
+    chunk_v6 = Column(Text, nullable=False)
 
 
 Base.metadata.create_all(bind=engine)

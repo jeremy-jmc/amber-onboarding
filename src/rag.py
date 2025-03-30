@@ -115,7 +115,8 @@ El plazo de prestación del servicio será de trescientos sesenta y cinco (365) 
     # Hay diferencias
     ("¿Qué diferencias hay en la sección 6.3.1.?", ""),
     ("¿Las certificaciones requeridas para el proveedor de nube pública son las mismas en ambas versiones del documento?", 
-     "No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece​")
+     "No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece​"),
+    ("¿En que se diferencia hay en la sección 6.3.1.?", "")
 ]
 
 RESET = True
@@ -217,9 +218,12 @@ def sort_by_match(target: str, candidates: list) -> list:
     return sorted(candidates, key=match_score, reverse=True)
 
 
-def prioritize_and_sort(question: str, candidates: list) -> list:
+def get_topk_sections_from_question(question: str, num_to_keys: dict) -> list:
+    candidates = num_to_keys.keys()
     section_references = get_section_references(question)
-    
+    print(f"{section_references=}")
+
+    fixed_candidates = []
     priority_candidates = []
     other_candidates = []
     for section_number in section_references:
@@ -227,32 +231,28 @@ def prioritize_and_sort(question: str, candidates: list) -> list:
         if section_number:
             top_level_section = section_number.split('.')[0]
             # p_c = [c for c in candidates if c.startswith(section_number) or section_number.startswith(c)]
-            p_c = [
-                c for c in candidates if c.startswith(top_level_section)
+            f_c = [
+                c for c in candidates if c.startswith(section_number)
             ]
-            o_c = [c for c in candidates if c not in p_c]
+            p_c = [
+                c for c in candidates if c.startswith(top_level_section) and c not in f_c
+            ]
+            o_c = [c for c in candidates if c not in p_c and c not in f_c]
         else:
             p_c = candidates
             o_c = []
 
+        fixed_candidates.extend(f_c)
         priority_candidates.extend(p_c)
         other_candidates.extend(o_c)
         # print(f"{p_c=}")
         # print(f"{o_c=}")
 
+    sorted_fixed = sort_by_match(question, fixed_candidates)
     sorted_priority = sort_by_match(question, priority_candidates)
     sorted_others = sort_by_match(question, other_candidates)
 
-    return sorted_priority + sorted_others
-
-
-def get_topk_sections_from_question(question: str, num_to_keys: dict, k: int = 10) -> list:
-    # print(f"{num_to_keys=}")
-    # print(f"{question=}")
-
-    sorted_idxs = prioritize_and_sort(question, num_to_keys.keys())
-    # print(f"{sorted_idxs[:k]=}")
-    return [num_to_keys[v] for v in sorted_idxs][:k]
+    return [num_to_keys[v] for v in sorted_fixed], [num_to_keys[v] for v in sorted_priority]
 
 """
 index_tree = json.loads(open(f'../data/tree_tdr_v4.json', "r").read())
@@ -267,6 +267,8 @@ print(get_topk_sections_from_question("Que dicen los anexos", num_to_section))
 print(get_topk_sections_from_question('¿Que dice la seccion 7.2?', num_to_section))
 print(get_topk_sections_from_question('Compara la seccion 5 de ambos documentos', num_to_section))
 print(get_topk_sections_from_question('De acuerdo a las secciones 5 y 6.3.1. ¿Cuales son las diferencias?', num_to_section))
+print(get_topk_sections_from_question('Explicame lo que dice en la seccion 5.5', num_to_section))
+print(get_topk_sections_from_question("¿Qué diferencias hay en la sección 2 'Finalidad publica'?", num_to_section))
 """
 
 # -----------------------------------------------------------------------------
@@ -320,11 +322,12 @@ def retrieve_sections_from_question_similarity(question: str) -> dict:
             k.split()[0] if 'ANEXO' not in k else k: k 
             for k in keys_all
         }
+        
+        fixed_sections, related_sections = get_topk_sections_from_question(question, num_to_section)
+        document_sections = [(f_path, v) for v in related_sections]
+        print(f"{fixed_sections=} {related_sections=}")
 
-        document_sections = [(f_path, v) for v in get_topk_sections_from_question(question, num_to_section)]
-        print(f"{document_sections=}")
         query_embedding = embed_call(bedrock_runtime, question)
-
         ranked_chunks = Session.execute(
             select(
                 Embedding.document_name,
@@ -340,7 +343,7 @@ def retrieve_sections_from_question_similarity(question: str) -> dict:
         ).all()
                 
         seen = set()
-        rag_sections = [s for _, s, _, _ in ranked_chunks if not (s in seen or seen.add(s))]
+        rag_sections = fixed_sections + [s for _, s, _, _ in ranked_chunks if not (s in seen or seen.add(s))]
         print(f"{rag_sections=}")
 
         retrieve_sections[f_path] = rag_sections
@@ -379,12 +382,14 @@ def general_qa_tool(question: str) -> str:
 
     sections_in_response  = check_sections_in_question(question)
     has_sections = sections_in_response['sections_in_question']
+    print(f"{has_sections=}")
 
     if has_sections:
         extracted_sections = retrieve_sections_from_question_similarity(question)
     else:
         extracted_sections = retrieve_sections_from_question_simple(question)
 
+    print(f"{extracted_sections=}")
     for f_path, sections in extracted_sections.items():
         print(f"{f_path=}")
         extracted_docs.extend(retrieve_docs(f_path, sections))
@@ -466,7 +471,6 @@ def handle_query(q_a: tuple) -> dict:
     else:
         raise ValueError(f"Invalid question type: {question_type}")
 
-    
     
     # print(json.dumps(retrieval_dict, indent=2, ensure_ascii=False))
 
