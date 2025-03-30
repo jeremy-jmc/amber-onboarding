@@ -62,7 +62,7 @@ IDEAS:
 
 
 def parse_pdf(file_path: str) -> list[str]:
-    md_text = pymupdf4llm.to_markdown(file_path)    # , page_chunks=True
+    md_text = pymupdf4llm.to_markdown(file_path, show_progress=False)    # , page_chunks=True
     # print(type(md_text))
 
     pathlib.Path(f"../data/{file_path.replace('.pdf', '')}.md").write_bytes(md_text.encode())

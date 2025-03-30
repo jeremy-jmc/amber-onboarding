@@ -1,0 +1,132 @@
+question_type,question,sections,answer,llm_response,bert_score
+comparativa,Cuales son las diferencias en la sección 5.1.?,"['5.2. Del procedimiento', '5.1. Descripción y cantidad del servicio a contratar', '5.4.1. Soporte']","Las diferencias principales en la sección 5.1 entre ambos documentos son las siguientes:
+    1. Composición de las prestaciones:
+        - En tdr_v6, se agrupan las prestaciones en dos ítems: la prestación principal (que incluye el Servicio de implementación y migración y el Servicio de infraestructura Pública o Nube Pública) y la prestación accesoria (que agrupa el Servicio de Gestión y Soporte y el Servicio de capacitación).
+        - En tdr_v4, se detallan tres ítems: la prestación principal (con el Servicio de implementación y migración y el Servicio de infraestructura, soporte de la marca y adicionales), la prestación accesoria (Servicio de Gestión y Soporte) y un ítem separado para la capacitación (Servicio de capacitación).
+    2. Certificaciones requeridas:
+        - Ambos documentos exigen certificaciones para el servicio de nube pública, incluyendo CSA, FedRAMP, SOC 1, SOC 2, SOC 3, ISO 9001, ISO 27001, ISO 27017, ISO 27018 e ISO 22301:2019.
+        - tdr_v4 incorpora adicionalmente la certificación HIPAA, que no se menciona en tdr_v6.
+    3. Redacción y formato:
+        - Aunque ambos textos establecen requisitos similares (por ejemplo, disponibilidad mínima del 99.99%, plataforma de administración de la nube, y la necesidad de contar con al menos dos centros de datos para garantizar la resiliencia), la estructura y el orden de presentación varían ligeramente entre ambos documentos.
+    Estas diferencias reflejan ajustes en la forma de agrupar los servicios y en algunos requisitos específicos, como las certificaciones adicionales en tdr_v4.","Las principales diferencias en la sección 5.1 son:
+
+1. Se ha añadido un ""Cuadro 1- Cuadro Componentes del Servicio"" al final de la sección, que proporciona una descripción detallada y cuantificada de los componentes requeridos, incluyendo especificaciones técnicas, cantidades y modalidades de contratación.
+
+2. Se ha eliminado la certificación HIPAA de la lista de certificaciones requeridas para el servicio de nube pública.
+
+3. Se han realizado modificaciones en algunos detalles técnicos de los servicios descritos, como especificaciones de bases de datos, redes y otros componentes.
+
+4. La estructura y presentación de la información ha cambiado, ofreciendo una organización más detallada y clara de los componentes del servicio.
+
+5. Se han incluido cantidades específicas y se ha especificado la modalidad de contratación (Suma Alzada o Precio Unitario) para cada componente en el nuevo cuadro, lo que proporciona una visión más precisa de los requisitos y facilita la elaboración de propuestas y presupuestos.
+
+Estas diferencias resultan en una especificación más detallada y estructurada de los servicios requeridos, lo que puede impactar en la selección de proveedores y en la elaboración de propuestas técnicas y económicas para el proyecto.",0.6917131543159485
+comparativa,¿Las certificaciones requeridas para el proveedor de nube pública son las mismas en ambas versiones del documento?,"['II. REQUISITOS DE CALIFICACION', '6.2. Requisitos de calificación del proveedor', '5.1. Descripción y cantidad del servicio a contratar', '7.1.1. Medidas de seguridad']","No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece","Sí, las certificaciones requeridas para el proveedor de nube pública son las mismas en ambas versiones del documento. Aunque hay una diferencia en el tipo de partner requerido en la sección 7.1.1 (avanzado vs. acreditado), las certificaciones específicas listadas en la sección 5.1 son idénticas en ambas versiones. Estas certificaciones incluyen Cloud Security Alliance (CSA), FedRAMP, SOC 1/2/3, ISO 9001/27001/27017/27018/22301:2019, entre otras. La diferencia en el tipo de partner no afecta las certificaciones requeridas para el proveedor de nube pública.",0.7217158675193787
+comparativa,¿Qué diferencias hay en la sección 2 'Finalidad publica'?,"['4.2. Objetivo Especifico', '2. FINALIDAD PÚBLICA', '4.1. Objetivo General']",No hay diferencias en la seccion 2 'Finalidad publica' entre los 2 documentos,"Basándome en el análisis de los contextos proporcionados, no se encontraron diferencias en la sección 2 ""FINALIDAD PÚBLICA"" entre las versiones TDR_V4 y TDR_V6. El contenido de esta sección es idéntico en ambas versiones del documento.",0.7300307750701904
+comparativa,¿En que se diferencia hay en la sección II.?,['II. REQUISITOS DE CALIFICACION'],"En tdr_v4.pdf: ""El postor deberá contar con carta y/o certificado de respaldo como partner avanzado oficial de la marca (fabricante) de la nube pública a ofertar.""
+
+En tdr_v6.pdf: ""El postor deberá contar con carta y/o certificado de respaldo como partner oficial de la marca (fabricante) de la nube pública a ofertar.""
+
+La palabra ""avanzado"" fue eliminada en la versión v6, reduciendo el nivel de partnership requerido.","La principal diferencia en la sección II de los REQUISITOS DE CALIFICACIÓN entre las versiones V4 y V6 se encuentra en el requisito de certificación del proveedor como partner de la marca de nube pública a ofertar. En la versión V4, se exige que el postor cuente con ""carta y/o certificado de respaldo como partner avanzado oficial"", mientras que en la versión V6, este requisito se ha modificado a ""carta y/o certificado de respaldo como partner oficial"", eliminando la palabra ""avanzado"". Esta modificación podría ampliar el rango de proveedores elegibles para participar en la licitación, al permitir la participación de partners oficiales que no necesariamente tengan el nivel ""avanzado"" de certificación.",0.73203045129776
+comparativa,¿En que se diferencia hay en la sección II. Requisitos de Claificacion?,['II. REQUISITOS DE CALIFICACION'],"En tdr_v4.pdf: ""El postor deberá contar con carta y/o certificado de respaldo como partner avanzado oficial de la marca (fabricante) de la nube pública a ofertar.""
+
+En tdr_v6.pdf: ""El postor deberá contar con carta y/o certificado de respaldo como partner oficial de la marca (fabricante) de la nube pública a ofertar.""
+
+La palabra ""avanzado"" fue eliminada en la versión v6, reduciendo el nivel de partnership requerido.","La principal diferencia en la sección II. Requisitos de Calificación entre las versiones 4 y 6 se encuentra en el nivel de partnership requerido para el proveedor. En la versión 4, se solicitaba que el postor contara con una carta y/o certificado de respaldo como ""partner avanzado oficial"" de la marca (fabricante) de la nube pública a ofertar. En contraste, la versión 6 ha eliminado la palabra ""avanzado"", requiriendo únicamente que el postor sea un ""partner oficial"".
+
+Esta modificación podría implicar una reducción en el nivel de experiencia o certificación requerido para los proveedores, lo que potencialmente ampliaría el rango de empresas elegibles para participar en la convocatoria. Sin embargo, también podría tener un impacto en el nivel de especialización de los proveedores que pueden calificar para el proyecto.",0.7339369654655457
+comparativa,¿Qué diferencias hay en la sección 6.3.1.?,"['6.3.1. Entregables del servicio', '6.3.2. Personal clave']","Las diferencias en la sección 6.3.1. Entregables del servicio entre ambos documentos son las siguientes:
+
+1. Cambio en la cláusula sobre servicios no utilizados:
+   - En 'tdr_v4.pdf': Si no se utiliza el 100% de los servicios solicitados, la entidad podrá utilizar la diferencia hasta la finalización del contrato.
+   - En 'tdr_v6.pdf': En lugar de permitir que la entidad use la diferencia, se menciona que el contratista podrá otorgar lo equivalente en créditos disponibles para la entidad.
+
+Por lo demás, los entregables y requisitos son idénticos en ambos documentos.","En la sección 6.3.1. ""Entregables del servicio"", se identifica una diferencia significativa en la subsección ""SERVICIO INFRAESTRUCTURA PÚBLICA O NUBE PÚBLICA"". 
+
+La principal diferencia radica en cómo se manejan los servicios no utilizados al 100%:
+
+1. En la versión anterior (V4), si no se utilizaba el 100% de los servicios solicitados, la entidad podía utilizar la diferencia hasta la finalización del contrato.
+
+2. En la versión actualizada (V6), si no se utiliza el 100% de los servicios solicitados, el contratista podrá otorgar lo equivalente en créditos disponibles a la entidad para su uso.
+
+Este cambio implica una modificación en la forma de gestionar los recursos no utilizados, pasando de una extensión del uso dentro del contrato a un sistema de créditos que la entidad puede utilizar. Esta diferencia podría afectar la flexibilidad y la planificación del uso de recursos por parte de EsSalud.",0.7700442671775818
+general,Explicame lo que dice en la seccion 5.5,"['5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '5.2. Del procedimiento', '5.3. Seguros', '5.4.1. Soporte', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '5.2. Del procedimiento', '5.3. Seguros']","
+La prestación del servicio será en el (Piso 6) de la Sede Central Essalud, ubicado en el Edificio Lima - Jr. Domingo Cueto 120 – Jesús María – Lima.
+
+La implementación del servicio será realizada en un plazo máximo de hasta treinta (30) días calendarios, contados a partir del día siguiente de la firma del contrato. La Sub Gerencia de Operaciones de Tecnologías de la Información y Sub Gerencia de Sistemas Aseguradores, Subsidios y Sociales – GCTIC, con el Proveedor suscribirán el Acta de Conformidad de Implementación (Anexo A), a más tardar a los cinco (05) días calendarios posteriores al término de la implementación, en caso no se presenten observaciones. Finalizada la implementación del servicio, se firmará el 'Acta de Inicio del Servicio' (Ver Anexo B), suscrita por el representante de la Sub Gerencia de Operaciones de TI y el Proveedor, para dar inicio al conteo de los trescientos sesenta y cinco (365) días calendarios de prestación del servicio.
+
+El plazo de prestación del servicio será de trescientos sesenta y cinco (365) días calendario, contados a partir del día siguiente de la firma del 'Acta de Inicio de Servicio'.
+     ","La sección 5.5 ""Lugar y plazo de prestación del servicio"" especifica lo siguiente:
+
+1. Lugar (5.5.1): La prestación del servicio será en el Piso 6 de la Sede Central Essalud, ubicado en el Edificio Lima - Jr. Domingo Cueto 120 – Jesús María – Lima.
+
+2. Plazo (5.5.2): 
+   - La implementación del servicio se realizará en un plazo máximo de 30 días calendarios desde la firma del contrato.
+   - Se firmará un Acta de Conformidad de Implementación dentro de los 5 días calendarios posteriores al término de la implementación.
+   - Luego se firmará un ""Acta de Inicio del Servicio"" para comenzar el conteo de los 365 días calendario de prestación del servicio.
+   - El plazo total del servicio es de 365 días calendario, contados a partir del día siguiente de la firma del ""Acta de Inicio de Servicio"".
+   - Si no se consume la capacidad total de los recursos contratados en nube, el proveedor otorgará el equivalente en créditos disponibles a la entidad.
+   - No se considera pago alguno durante la etapa de implementación.",0.7744291424751282
+general,De acuerdo a la sección 4. ¿Qué tipo de controles debe implementar el servicio para garantizar la seguridad de la información?,"['4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico', '7.1.1. Medidas de seguridad', '7.2. Confiabilidad', '4. OBJETIVOS DE LA CONTRATACIÓN', '4.1. Objetivo General', '4.2. Objetivo Especifico', '7.1.1. Medidas de seguridad', '7.2. Confiabilidad']",El servicio debe implementar diversos controles tanto lógicos como físicos para garantizar un alto nivel de seguridad en el despliegue de las aplicaciones.,"De acuerdo con la sección 4 del contexto proporcionado, el servicio debe implementar diversos controles tanto lógicos como físicos para garantizar la seguridad de la información. Sin embargo, no se especifican los tipos concretos de controles en esta sección.",0.8154402375221252
+general,¿Cuántos centros de datos mínimos se requieren para asegurar la resiliencia y continuidad del servicio?,['5.1. Descripción y cantidad del servicio a contratar'],Se requiere la implementación de como mínimo dos (2) centros de datos (zonas de disponibilidad) en una misma zona geográfica (región).,Se requieren como mínimo dos (2) centros de datos para asegurar la resiliencia y continuidad del servicio.,0.8178408145904541
+general,¿Cual es la finalidad publica de los documentos?,['2. FINALIDAD PÚBLICA'],"La presente contratación pública tiene como finalidad mantener la operatividad y modernización de nuestra plataforma tecnológica, buscando elevar los niveles de eficiencia y satisfacción del personal administrativo, profesionales de la salud, usuarios internos y externos de EsSalud. Por la naturaleza del valor de los activos de información, por las mejores prácticas de seguridad y continuidad de los servicios, es necesario el fortalecimiento de las capacidades para la habilitación y validación de los niveles de transacción necesarios para despliegue de las aplicaciones, sobre el cual se brindará una atención oportuna a los asegurados y personal administrativo de EsSalud a nivel nacional, con la finalidad de asegurar la disponibilidad y confiabilidad de la documentación que generan las diferentes unidades orgánicas.","La finalidad pública de los documentos, según el contexto proporcionado, es mantener la operatividad y modernización de la plataforma tecnológica de EsSalud, asegurando la disponibilidad y confiabilidad de la documentación generada por las diferentes unidades orgánicas. Esto tiene como objetivo elevar los niveles de eficiencia y satisfacción del personal administrativo, profesionales de la salud, y usuarios internos y externos, permitiendo una atención oportuna a los asegurados a nivel nacional.",0.82724529504776
+general,¿Cual es la responsabilidad del postor durante la implementacion del servicio?,"['5.2. Del procedimiento', '5.1. Descripción y cantidad del servicio a contratar']","
+El postor es responsable de:
+
+- Elaborar un plan de trabajo para la implementación del proyecto.
+- Diseñar la arquitectura de la solución con Infraestructura como Código (IaC) en dos ambientes: QA y PROD.
+- Implementar y diseñar el flujo de despliegue y entrega continua (CI/CD) para backend, frontend y móvil Android en QA y PROD.
+- Realizar hasta cinco pruebas de estrés end-to-end en QA para validar la conexión VPN Site-To-Site y la comunicación con APIs externos.
+- Asegurar la observabilidad de la aplicación, APIs y base de datos mediante herramientas de OpenTelemetry o similares.
+- Ejecutar hasta dos pruebas de ethical hacking y/o pentesting en una aplicación end-to-end que incluye backend, frontend y APIs.
+- Entregar informes técnicos detallados con mejoras de arquitectura y vulnerabilidades detectadas en las pruebas de seguridad.
+- Brindar soporte técnico 24/7 durante la duración del contrato.
+- Garantizar que todos los trabajadores cuenten con Seguro Complementario de Trabajo de Riesgo (SCTR).
+
+El proveedor deberá presentar la documentación de implementación en un plazo máximo de 30 días calendarios desde la firma del contrato.
+","La responsabilidad del postor durante la implementación del servicio incluye:
+1. Elaborar un plan de trabajo para la implementación del proyecto.
+2. Diseñar e implementar la arquitectura de la solución con Infraestructura como Código (IaC) en ambientes QA y PROD.
+3. Implementar el flujo de despliegue y entrega continua (CI/CD) para componentes backend, frontend y móvil android en ambientes QA y PROD.
+4. Realizar pruebas de estrés end-to-end y configurar herramientas de observabilidad.
+5. Ejecutar pruebas de ethical hacking y/o pentesting.
+6. Elaborar informes técnicos detallados sobre la arquitectura y seguridad.
+7. Proporcionar soporte técnico 24/7 durante la duración del contrato.",0.8398253917694092
+comparativa,¿Cuales son los objetivos generales y especificos de la contratacion en los documentos?,"['4.2. Objetivo Especifico', '4.1. Objetivo General']","
+Objetivo General:
+Contratar el Servicio de Infraestructura, Plataforma y Microservicios en Nube Pública 
+para el despliegue de las Aplicaciones y Nuevos Servicios de la Gerencia Central de 
+Tecnologías de Información y Comunicaciones de EsSalud.
+
+Objetivos Específicos:
+- Contar con un servicio que permita un alto rendimiento en capacidades de procesamiento, 
+  memoria, almacenamiento, comunicaciones, seguridad y redes a través de una Infraestructura 
+  Pública o nube pública.
+- Garantizar un alto nivel de seguridad en el despliegue de las aplicaciones de EsSalud.
+- Proporcionar un servicio garantizando el soporte técnico brindado por el fabricante. 
+  Asimismo, el servicio debe tener como alta prioridad la seguridad de la información, a través 
+  de diversos controles tanto lógicos como físicos.
+","Los objetivos generales y específicos de la contratación en los documentos son:
+
+Objetivo General:
+- Contratar el Servicio de Infraestructura, Plataforma y Microservicios en Nube Pública para el despliegue de las Aplicaciones y Nuevos Servicios de la Gerencia Central de Tecnologías de Información y Comunicaciones de Essalud.
+
+Objetivos Específicos:
+1. Contar con un servicio que permita un alto rendimiento en capacidades de procesamiento, memoria, almacenamiento, comunicaciones, seguridad y redes a través de una Infraestructura Pública o nube pública.
+
+2. Garantizar un alto nivel de seguridad en el despliegue de las aplicaciones de EsSalud.
+
+3. Proporcionar un servicio garantizando el soporte técnico brindado por el fabricante, con alta prioridad en la seguridad de la información, a través de diversos controles tanto lógicos como físicos.
+
+Además, aunque no se menciona explícitamente como un objetivo específico, ambas versiones incluyen servicios de implementación, migración, gestión, soporte y capacitación como parte de la contratación, lo que sugiere que estos son también objetivos implícitos del proyecto.",0.8917061686515808
+general,De acuerdo a la sección 5. ¿Quién será responsable de administrar la consola de los servicios de Infraestructura?,"['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '6.3.2. Personal clave', '6.3.1. Entregables del servicio', '5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '6.3.1. Entregables del servicio', '6.3.2. Personal clave']",La consola será manejada por el Especialista asignado por la Sub Gerencia de Operaciones de Tecnologías de Información de la Gerencia de Producción de la GCTIC.,"De acuerdo a la sección 5, la consola de los servicios de Infraestructura será administrada por el Especialista asignado por la Sub Gerencia de Operaciones de Tecnologías de Información de la Gerencia de Producción de la GCTIC.",0.9169496297836304
+general,¿Cuál es el porcentaje mínimo de disponibilidad que debe tener la infraestructura de Nube Pública?,['5.1. Descripción y cantidad del servicio a contratar'],La infraestructura de Nube Pública descrita en los presentes términos de referencia deberá tener una disponibilidad mínima del 99.9%.,La infraestructura de Nube Pública debe tener una disponibilidad mínima del 99.99%.,0.9178920388221741
+general,De acuerdo a la sección 5. ¿Cuál es el periodo de garantía que debe tener toda la solución?,"['5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '7.4. Forma de pago', '7.2. Confiabilidad', 'ANEXO N° F', '5. CARACTERISTICAS Y CONDICIONES DEL SERVICIO A CONTRATAR', '5.1. Descripción y cantidad del servicio a contratar', '5.2. Del procedimiento', '5.3. Seguros', '5.4. Prestaciones accesorias a la prestación principal', '5.4.1. Soporte', '5.4.2. Capacitación', '5.5. Lugar y plazo de prestación del servicio', '5.5.1. Lugar', '5.5.2. Plazo', '7.4. Forma de pago', '6.3.1. Entregables del servicio', '7.2. Confiabilidad', 'ANEXO N° F']",Toda la solución deberá contar con una garantía por 12 meses.,"De acuerdo a la sección 5, toda la solución deberá contar con una garantía por 12 meses.",0.9217582941055298
+general,¿Que dice la seccion 2 'Finalidad publica'?,"['2. FINALIDAD PÚBLICA', '4.2. Objetivo Especifico', '4.1. Objetivo General', 'I. TERMINOS DE REFERENCIA', '2. FINALIDAD PÚBLICA', '4.2. Objetivo Especifico', '4.1. Objetivo General']",,"La sección 2 ""Finalidad Pública"" establece que la contratación tiene como objetivo mantener la operatividad y modernizar la plataforma tecnológica de EsSalud, buscando mejorar la eficiencia y satisfacción del personal administrativo, profesionales de la salud, y usuarios internos y externos. Se enfatiza la necesidad de fortalecer las capacidades para el despliegue de aplicaciones, con el fin de brindar una atención oportuna a los asegurados y personal administrativo a nivel nacional. Además, se busca asegurar la disponibilidad y confiabilidad de la documentación generada por las diferentes unidades orgánicas. La sección también destaca la importancia de las mejores prácticas de seguridad y continuidad de los servicios, dada la naturaleza del valor de los activos de información.",
+general,¿Que dice la seccion 6.3.1.?,"['6.3.1. Entregables del servicio', '6.3.2. Personal clave', '6.3.1. Entregables del servicio', '6.3.2. Personal clave']",,"La sección 6.3.1. titulada ""Entregables del servicio"" describe los documentos y reportes que el Proveedor debe presentar en dos fases:
+
+1. Implementación: El Proveedor tiene 30 días calendarios para presentar documentación que incluye plan de trabajo, arquitectura y diseño de la solución, resultados de pruebas de estrés, e informes técnicos sobre mejoras y vulnerabilidades.
+
+2. Servicio Infraestructura Pública o Nube Pública: El Proveedor debe presentar un informe mensual detallado dentro de los 10 días calendarios posteriores a cada servicio mensual. Este informe debe incluir reportes de costos, rendimiento de la infraestructura, registro de incidencias y recomendaciones.
+
+La sección también menciona que estos entregables pueden ser presentados a través del sistema de Mesa de Partes Digital de EsSalud.",

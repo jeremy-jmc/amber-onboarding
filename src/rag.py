@@ -110,13 +110,37 @@ El plazo de prestación del servicio será de trescientos sesenta y cinco (365) 
      "No hay diferencias en la seccion 2 'Finalidad publica' entre los 2 documentos"),
     
     # Seccion 5.1: diferencias importantes, pero contexto muy largo para la LLM
-    ("Cuales son las diferencias en la sección 5.1.?", ""),
+    ("Cuales son las diferencias en la sección 5.1.?", """Las diferencias principales en la sección 5.1 entre ambos documentos son las siguientes:
+    1. Composición de las prestaciones:
+        - En tdr_v6, se agrupan las prestaciones en dos ítems: la prestación principal (que incluye el Servicio de implementación y migración y el Servicio de infraestructura Pública o Nube Pública) y la prestación accesoria (que agrupa el Servicio de Gestión y Soporte y el Servicio de capacitación).
+        - En tdr_v4, se detallan tres ítems: la prestación principal (con el Servicio de implementación y migración y el Servicio de infraestructura, soporte de la marca y adicionales), la prestación accesoria (Servicio de Gestión y Soporte) y un ítem separado para la capacitación (Servicio de capacitación).
+    2. Certificaciones requeridas:
+        - Ambos documentos exigen certificaciones para el servicio de nube pública, incluyendo CSA, FedRAMP, SOC 1, SOC 2, SOC 3, ISO 9001, ISO 27001, ISO 27017, ISO 27018 e ISO 22301:2019.
+        - tdr_v4 incorpora adicionalmente la certificación HIPAA, que no se menciona en tdr_v6.
+    3. Redacción y formato:
+        - Aunque ambos textos establecen requisitos similares (por ejemplo, disponibilidad mínima del 99.99%, plataforma de administración de la nube, y la necesidad de contar con al menos dos centros de datos para garantizar la resiliencia), la estructura y el orden de presentación varían ligeramente entre ambos documentos.
+    Estas diferencias reflejan ajustes en la forma de agrupar los servicios y en algunos requisitos específicos, como las certificaciones adicionales en tdr_v4."""),
 
     # Hay diferencias
-    ("¿Qué diferencias hay en la sección 6.3.1.?", ""),
+    ("¿Qué diferencias hay en la sección 6.3.1.?", """Las diferencias en la sección 6.3.1. Entregables del servicio entre ambos documentos son las siguientes:
+
+1. Cambio en la cláusula sobre servicios no utilizados:
+   - En 'tdr_v4.pdf': Si no se utiliza el 100% de los servicios solicitados, la entidad podrá utilizar la diferencia hasta la finalización del contrato.
+   - En 'tdr_v6.pdf': En lugar de permitir que la entidad use la diferencia, se menciona que el contratista podrá otorgar lo equivalente en créditos disponibles para la entidad.
+
+Por lo demás, los entregables y requisitos son idénticos en ambos documentos."""),
     ("¿Las certificaciones requeridas para el proveedor de nube pública son las mismas en ambas versiones del documento?", 
-     "No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece​"),
-    ("¿En que se diferencia hay en la sección 6.3.1.?", "")
+     "No exactamente. Ambas versiones requieren certificaciones como ISO 27001, ISO 9001, SOC 1/2/3, FedRAMP y Cloud Security Alliance (CSA). Sin embargo, la versión V4 incluye HIPAA como requisito, mientras que en la versión V6 esta certificación ya no aparece"),
+    ("¿En que se diferencia hay en la sección II.?", """En tdr_v4.pdf: "El postor deberá contar con carta y/o certificado de respaldo como partner avanzado oficial de la marca (fabricante) de la nube pública a ofertar."
+
+En tdr_v6.pdf: "El postor deberá contar con carta y/o certificado de respaldo como partner oficial de la marca (fabricante) de la nube pública a ofertar."
+
+La palabra "avanzado" fue eliminada en la versión v6, reduciendo el nivel de partnership requerido."""),
+    ("¿En que se diferencia hay en la sección II. Requisitos de Claificacion?", """En tdr_v4.pdf: "El postor deberá contar con carta y/o certificado de respaldo como partner avanzado oficial de la marca (fabricante) de la nube pública a ofertar."
+
+En tdr_v6.pdf: "El postor deberá contar con carta y/o certificado de respaldo como partner oficial de la marca (fabricante) de la nube pública a ofertar."
+
+La palabra "avanzado" fue eliminada en la versión v6, reduciendo el nivel de partnership requerido.""")
 ]
 
 RESET = True
@@ -135,6 +159,10 @@ if RESET:
 ANSWER_QUESTION_PROMPT_SYSTEM = load_prompt('./prompts/ans_q_system.txt')
 
 ANSWER_QUESTION_PROMPT_USER = load_prompt('./prompts/ans_q_user.txt')
+
+ANSWER_QUESTION_DIFFERENCES_PROMPT_SYSTEM = load_prompt('./prompts/ans_qd_system.txt')
+
+ANSWER_QUESTION_DIFFERENCES_PROMPT_USER = load_prompt('./prompts/ans_qd_user.txt')
 
 CLASSIFY_QUESTION_PROMPT_USER = load_prompt('./prompts/classify_question_user.txt')
 
@@ -209,7 +237,6 @@ def get_section_references(text: str) -> list:
 # print(get_section_references('De acuerdo a la seccion 4. ¿Que dice acerca de la seguridad de la informacion?'))
 
 
-
 def sort_by_match(target: str, candidates: list) -> list:
     def match_score(candidate):
         matcher = SequenceMatcher(None, target, candidate)
@@ -252,7 +279,13 @@ def get_topk_sections_from_question(question: str, num_to_keys: dict) -> list:
     sorted_priority = sort_by_match(question, priority_candidates)
     sorted_others = sort_by_match(question, other_candidates)
 
-    return [num_to_keys[v] for v in sorted_fixed], [num_to_keys[v] for v in sorted_priority]
+    to_names = lambda x: [num_to_keys[v] for v in x]
+
+    return (
+        to_names(sorted_fixed),
+        to_names(sorted_priority),
+        to_names(sorted_others),
+    )
 
 """
 index_tree = json.loads(open(f'../data/tree_tdr_v4.json', "r").read())
@@ -323,7 +356,10 @@ def retrieve_sections_from_question_similarity(question: str) -> dict:
             for k in keys_all
         }
         
-        fixed_sections, related_sections = get_topk_sections_from_question(question, num_to_section)
+        fixed_sections, related_sections, other_sections = get_topk_sections_from_question(question, num_to_section)
+        if len(related_sections) == 0:
+            related_sections = other_sections
+        
         document_sections = [(f_path, v) for v in related_sections]
         print(f"{fixed_sections=} {related_sections=}")
 
@@ -351,7 +387,7 @@ def retrieve_sections_from_question_similarity(question: str) -> dict:
     return retrieve_sections
 
 
-def retrieve_docs(file_path: str, sections: list) -> list:
+def retrieve_docs(file_path: str, sections: list):
     retrieved_docs = Session.execute(
         select(
             DocumentSection.document_name,
@@ -418,6 +454,24 @@ def general_qa_tool(question: str) -> str:
     }
 
 
+def get_doc_chunk_differences(section_name: str):
+    chuk_differences = Session.execute(
+        select(
+            # SectionDiff.section_v4,
+            # SectionDiff.section_v6,
+            SectionDiff.chunk_v4,
+            SectionDiff.chunk_v6
+        ).where(
+            and_(
+                SectionDiff.section_v4 == section_name,
+                SectionDiff.section_v6 == section_name
+            )
+        )
+    )
+
+    return chuk_differences
+
+
 def compare_documents_tool(question: str) -> str:
     print(f"{question=}")
 
@@ -433,16 +487,27 @@ def compare_documents_tool(question: str) -> str:
         context_doc = docs_to_context(f_path, retrieved_docs)
         context_list.append(context_doc)
 
+    diff_context = []
+    for sec in sections_to_compare:
+        chunk_diff = get_doc_chunk_differences(sec)
+
+        diff_context.append("\n".join([
+            f"<DIFFERENCES_{sec}>\n<CHUNK_V4>{chunk_v4}</CHUNK_V4>\n\n<CHUNK_V6>{chunk_v6}</CHUNK_V6>\n</DIFFERENCES_{sec}>"
+            for chunk_v4, chunk_v6 in chunk_diff
+        ]))
+
+    diff_context = "\n\n".join(diff_context)
+
     total_context = "\n\n".join(context_list)
     total_context = f"<TOTAL_CONTEXT>\n{total_context}\n</TOTAL_CONTEXT>"
 
-    p = ANSWER_QUESTION_PROMPT_USER.format(context=total_context, query=question)
+    p = ANSWER_QUESTION_DIFFERENCES_PROMPT_USER.format(context=total_context, question=question, diff_context=diff_context)
 
     return {
         'sections': sections_to_compare,
         'context': total_context,
         'prompt': p,
-        'system_prompt': ANSWER_QUESTION_PROMPT_SYSTEM
+        'system_prompt': ANSWER_QUESTION_DIFFERENCES_PROMPT_SYSTEM
     }
 
 
@@ -519,7 +584,7 @@ print(f"{records=}")
 
 if CALL_CLAUDE:
     df = pd.DataFrame([r for r in records if len(r)])
-    display(df)
+    # display(df)
 
     # df['bleu'] = df['bleu_dict'].apply(lambda x: x['bleu'])
     # df['rouge1'] = df['rouge_dict'].apply(lambda x: x['rouge1'])
@@ -530,7 +595,9 @@ if CALL_CLAUDE:
 
     metric_list = ['bert_score']    # 'bleu', 'rouge1', 'rouge2', 'rougeL', 'meteor', 
 
-    display(df[['question_type', 'sections_in_question', 'question', 'sections', 'answer', 'llm_response'] + metric_list].sort_values(by=metric_list, ascending=True))
+    #  'sections_in_question',
+    display(df[['question_type', 'question', 'sections', 'answer', 'llm_response'] + metric_list].sort_values(by=metric_list, ascending=True))
+    # display(df)
 
 """
     Preguntas de comprensión general
