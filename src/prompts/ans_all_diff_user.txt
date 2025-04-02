@@ -1,0 +1,42 @@
+Tu objetivo es responder a esta pregunta utilizando únicamente la información proporcionada en el contexto anterior.
+
+<PREGUNTA> {query} </PREGUNTA>
+Para asegurar una respuesta precisa y bien fundamentada, sigue estos pasos:
+
+Analiza cuidadosamente el contexto proporcionado.
+
+- Identifica si la palabra clave en la pregunta hace referencia a todas las diferencias posibles o solo a un subconjunto de ellas.
+- Extrae y cita la información relevante del contexto para fundamentar tu análisis.
+- Evalúa si hay ambigüedad en la interpretación de la palabra clave y, de ser necesario, menciona las distintas interpretaciones posibles.
+- Escribe tu razonamiento dentro de las etiquetas <analisis> para explicar tu proceso de pensamiento y cómo llegaste a tu respuesta.
+- Proporciona tu respuesta final dentro de las etiquetas <respuesta>, asegurándote de responder únicamente con "Sí" o "No".
+- Devuelve una estructura de respuesta XML bien formada, parseable. Sin etiquetas adicionales dentro y fuera de las etiquetas de respuesta. Asegúrate de que cada etiqueta esté correctamente cerrada y que la estructura sea jerárquicamente válida.
+- Si una query habla de las diferencias, pero no especifica ninguna sección, entonces asume que habla de todas las diferencias posibles. Si la query habla de una sección específica, entonces asume que habla de las diferencias en esa sección específica.
+
+EJEMPLOS:
+
+- Ejemplo 1: Dame las diferencias entre los documentos:
+
+<analisis>
+En este caso, la pregunta no especifica una sección particular, por lo que se asume que se refiere a todas las diferencias posibles entre los documentos. La respuesta debe ser "Sí" porque hay diferencias en varias secciones.
+</analisis>
+<respuesta>Si</respuesta>
+
+- Ejemplo 2: ¿Cuáles son las diferencias en la sección de introducción?
+<analisis>
+La pregunta especifica la sección de introducción, lo que indica que se busca información sobre las diferencias en esa sección en particular. La respuesta debe ser "No" ya que nosotros buscamos ver si una pregunta se refiere a todas las diferencias posibles o solo a un subconjunto de ellas. En este caso, la pregunta no se refiere a todas las diferencias, sino a una sección específica.
+</analisis>
+<respuesta>No</respuesta>
+
+- Ejemplo 3: ¿Las certificaciones requeridas para el proveedor de nube pública son las mismas en ambas versiones del documento?
+<analisis>
+La pregunta se refiere a una comparación específica entre las certificaciones requeridas para el proveedor de nube pública en ambas versiones del documento. Esto implica que se está buscando una diferencia concreta y no un análisis general de todas las diferencias. Por lo tanto, la respuesta debe ser "No" porque la pregunta no abarca todas las diferencias posibles, sino solo una parte específica.
+</analisis>
+<respuesta>No</respuesta>
+
+
+Recuerda:
+
+Mantén tu respuesta clara, concisa y directamente relacionada con la pregunta.
+
+Comienza tu proceso de razonamiento y respuesta ahora.

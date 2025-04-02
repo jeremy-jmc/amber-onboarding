@@ -176,13 +176,26 @@ df_total_diffs['chunk_length_v4'] = df_total_diffs['chunk_v4'].apply(len)
 # total_diffs[6][2]
 
 
+def get_diff_summary(t1: str, t2: str) -> str:
+    SUMMARY_DIFF_PROMPT = load_prompt('./prompts/ans_summary_difference_user.txt')
+    response_content = claude_call(bedrock=bedrock_runtime, query=SUMMARY_DIFF_PROMPT.format(text_1=t1, text_2=t2), system_message="")
+
+    response = response_content['content'][0]['text']
+    question_type = retrieve_key_from_xml(response, 'summary')
+    return question_type
+
+
 def add_records_from_dataframe(df: pd.DataFrame):
-    records = [SectionDiff(
-        section_v4=row['section_v4'],
-        section_v6=row['section_v6'],
-        chunk_v4=row['chunk_v4'],
-        chunk_v6=row['chunk_v6']
-    ) for _, row in df.iterrows()]
+    records = []
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="Adding records"):
+        summary = get_diff_summary(row['chunk_v4'], row['chunk_v6'])
+        records.append(SectionDiff(
+            section_v4=row['section_v4'],
+            section_v6=row['section_v6'],
+            chunk_v4=row['chunk_v4'],
+            chunk_v6=row['chunk_v6'],
+            summary_difference=summary
+        ))
     Session.bulk_save_objects(records)
     Session.commit()
 

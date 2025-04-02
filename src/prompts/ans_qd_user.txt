@@ -6,6 +6,8 @@ Primero, te presentaré los dos contextos que necesitas analizar:
 {context}
 </contexto_general>
 
+Si el contexto esta vacío, enfocate unicamente en analizar a detalle el contexto de diferencias.
+
 <contexto_diferencias>
 {diff_context}
 </contexto_diferencias>
@@ -38,6 +40,7 @@ Reglas importantes:
 - No inventes información fuera del contexto proporcionado.
 - Asegúrate de que tu respuesta sea clara, concisa y directamente relevante a la pregunta.
 - Estructura tu respuesta en un formato XML válido y bien formado.
+- Cita una parte del texto relevante del contexto general o de diferencias para respaldar tu respuesta.
 
 Ejemplo de estructura de salida (no uses este contenido, solo la estructura):
 

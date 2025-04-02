@@ -1,0 +1,38 @@
+# Comparación de Dos Textos: Análisis de Diferencias
+
+Estás encargado de comparar dos textos y resumir sus principales diferencias. Tu objetivo es proporcionar un análisis claro y conciso que destaque las distinciones clave entre los textos en términos de contenido, tono, estructura o cualquier otro aspecto relevante.
+
+Aquí están los dos textos que necesitas comparar:
+<chunk_tv4>
+{{texto_1}}
+</chunk_tv4>
+
+<chunk_tv6>
+{{texto_2}}
+</chunk_tv6>
+
+Por favor, sigue estos pasos:
+
+1. Lee y analiza cuidadosamente ambos textos.
+2. En tu análisis, considera el siguiente aspecto:
+   - Contenido: ¿Cuáles son los principales temas o ideas presentados en cada texto?
+3. Muestra tu proceso de pensamiento y observaciones iniciales dentro de etiquetas `<comparison_process>`. En esta sección:
+   a) Enumera los puntos clave de cada texto por separado.
+   b) Destaca las diferencias más significativas que has observado.
+4. Basado en tu análisis, crea un resumen de las principales diferencias entre los dos textos. Tu resumen debe cumplir con los siguientes requisitos:
+   - No debe tener más de 5 oraciones.
+   - Concéntrate en las diferencias más significativas y notables.
+   - Sé claro y conciso en tu explicación.
+5. Presenta tu resumen final dentro de etiquetas `<summary>`.
+
+Ejemplo de estructura de salida (no copies el contenido, solo el formato):
+```
+<comparison_process>
+[Tu análisis detallado de ambos textos, incluyendo lista de puntos clave, tabla comparativa y diferencias destacadas]
+</comparison_process>
+<summary>
+[Tu resumen conciso de las principales diferencias entre los dos textos, limitado a 5 oraciones]
+</summary>
+```
+
+Por favor, procede con tu proceso de comparación y resumen de los dos textos proporcionados.

@@ -140,10 +140,13 @@ La palabra "avanzado" fue eliminada en la versión v6, reduciendo el nivel de pa
 
 En tdr_v6.pdf: "El postor deberá contar con carta y/o certificado de respaldo como partner oficial de la marca (fabricante) de la nube pública a ofertar."
 
-La palabra "avanzado" fue eliminada en la versión v6, reduciendo el nivel de partnership requerido.""")
-]
+La palabra "avanzado" fue eliminada en la versión v6, reduciendo el nivel de partnership requerido."""),
 
-RESET = True
+    ("Tomando en cuenta que yo soy el desarrollador. dame las diferencias entre las 2 licitaciones", "")
+]
+# QA = [QA[-1]]
+
+RESET = False
 CALL_CLAUDE = True
 K = 5       # 5 mejor que 3, 10 mejor que 5 pero no sustancial
 
@@ -155,6 +158,8 @@ if RESET:
 # -----------------------------------------------------------------------------
 # PROMPTS
 # -----------------------------------------------------------------------------
+
+ALL_DIFERENCES_PROMPT_USER = load_prompt('./prompts/ans_all_diff_user.txt')
 
 ANSWER_QUESTION_PROMPT_SYSTEM = load_prompt('./prompts/ans_q_system.txt')
 
@@ -176,6 +181,20 @@ TOPK_SECTIONS_PROMPT_USER = load_prompt('./prompts/topk_sections_user.txt')
 # LLM FUNCTIONS
 # -----------------------------------------------------------------------------
 
+@retry_with_logging()
+def question_all_diferences(query: str) -> dict:
+    response_content = claude_call(bedrock=bedrock_runtime, query=ALL_DIFERENCES_PROMPT_USER.format(query=query), system_message="")
+    response = response_content['content'][0]['text']
+    question_type = retrieve_key_from_xml(response, 'respuesta')
+
+    assert question_type in ['Si', 'No'], f"Invalid question type: {question_type}"
+
+    return {
+        "question_type": question_type,
+    }
+
+# assert question_all_diferences('¿Que dice la seccion 7.2?')['question_type'] == 'No'
+# assert question_all_diferences("Tomando en cuenta que yo soy el desarrollador. dame las diferencias entre las 2 licitaciones")['question_type'] == 'Si'
 
 @retry_with_logging()
 def classify_question_type(query: str) -> dict:
@@ -454,30 +473,49 @@ def general_qa_tool(question: str) -> str:
     }
 
 
-def get_doc_chunk_differences(section_name: str):
-    chuk_differences = Session.execute(
-        select(
-            # SectionDiff.section_v4,
-            # SectionDiff.section_v6,
-            SectionDiff.chunk_v4,
-            SectionDiff.chunk_v6
-        ).where(
-            and_(
-                SectionDiff.section_v4 == section_name,
-                SectionDiff.section_v6 == section_name
+def get_doc_chunk_differences(section_name: str, summary: bool = False) -> list:
+
+    if summary:
+        chuk_differences = Session.execute(
+            select(
+                SectionDiff.summary_difference
+            ).where(
+                and_(
+                    SectionDiff.section_v4 == section_name,
+                    SectionDiff.section_v6 == section_name
+                )
             )
         )
-    )
+    else:
+        chuk_differences = Session.execute(
+            select(
+                # SectionDiff.section_v4,
+                # SectionDiff.section_v6,
+                SectionDiff.chunk_v4,
+                SectionDiff.chunk_v6
+            ).where(
+                and_(
+                    SectionDiff.section_v4 == section_name,
+                    SectionDiff.section_v6 == section_name
+                )
+            )
+        )
 
     return chuk_differences
 
 
 def compare_documents_tool(question: str) -> str:
     print(f"{question=}")
+    flag = question_all_diferences(question)['question_type'] == 'Si'
+    if flag:
+        
+        sections_v4 = json.loads(open(f'../data/tree_tdr_v4.json', "r").read())
+        sections_v6 = json.loads(open(f'../data/tree_tdr_v6.json', "r").read())
+        sections_to_compare = list(set.union(set(get_all_keys(sections_v4)),set(get_all_keys(sections_v6))))
+    else:
+        retrieve_sections = retrieve_sections_from_question_similarity(question)    
+        sections_to_compare = list(set(retrieve_sections['../data/tdr_v4.pdf']).intersection(set(retrieve_sections['../data/tdr_v6.pdf'])))
 
-    retrieve_sections = retrieve_sections_from_question_similarity(question)    
-
-    sections_to_compare = list(set(retrieve_sections['../data/tdr_v4.pdf']).intersection(set(retrieve_sections['../data/tdr_v6.pdf'])))
     print(f"{sections_to_compare=}")
     # print(json.dumps(sections_to_compare, indent=2, ensure_ascii=False))
 
@@ -489,24 +527,31 @@ def compare_documents_tool(question: str) -> str:
 
     diff_context = []
     for sec in sections_to_compare:
-        chunk_diff = get_doc_chunk_differences(sec)
-
-        diff_context.append("\n".join([
-            f"<DIFFERENCES_{sec}>\n<CHUNK_V4>{chunk_v4}</CHUNK_V4>\n\n<CHUNK_V6>{chunk_v6}</CHUNK_V6>\n</DIFFERENCES_{sec}>"
-            for chunk_v4, chunk_v6 in chunk_diff
-        ]))
+        chunk_diff = get_doc_chunk_differences(sec, flag)
+        try:
+            diff_context.append("\n".join([
+                f"<DIFFERENCES_{sec}>\n<CHUNK_V4>{chunk_v4}</CHUNK_V4>\n\n<CHUNK_V6>{chunk_v6}</CHUNK_V6>\n</DIFFERENCES_{sec}>"
+                for chunk_v4, chunk_v6 in chunk_diff
+            ]))
+        except:
+            diff_context.append("\n".join([
+                f"<DIFFERENCES_{sec}>\n{summary_diff}\n</DIFFERENCES_{sec}>"
+                for summary_diff in chunk_diff
+            ]))
 
     diff_context = "\n\n".join(diff_context)
+    docs_context = "\n\n".join(context_list)
 
-    total_context = "\n\n".join(context_list)
-    total_context = f"<TOTAL_CONTEXT>\n{total_context}\n</TOTAL_CONTEXT>"
+    if flag:
+        docs_context = ""
 
-    p = ANSWER_QUESTION_DIFFERENCES_PROMPT_USER.format(context=total_context, question=question, diff_context=diff_context)
+    p = ANSWER_QUESTION_DIFFERENCES_PROMPT_USER.format(context=docs_context, question=question, diff_context=diff_context)
 
     return {
         'sections': sections_to_compare,
-        'context': total_context,
+        'context': docs_context,
         'prompt': p,
+        'all': flag,
         'system_prompt': ANSWER_QUESTION_DIFFERENCES_PROMPT_SYSTEM
     }
 

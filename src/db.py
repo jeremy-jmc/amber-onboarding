@@ -33,6 +33,7 @@ class DocumentSection(Base):
     document_name = Column(String(50), primary_key=True, nullable=False)
     section_name = Column(String(250), primary_key=True, nullable=False)
     section_content = Column(String)
+    # section_content_summary = Column(Text, nullable=False)
 
 
 class SectionDiff(Base):
@@ -42,6 +43,7 @@ class SectionDiff(Base):
     section_v6 = Column(String(255), nullable=False)
     chunk_v4 = Column(Text, nullable=False)
     chunk_v6 = Column(Text, nullable=False)
+    summary_difference = Column(Text, nullable=False)
 
 
 Base.metadata.create_all(bind=engine)
