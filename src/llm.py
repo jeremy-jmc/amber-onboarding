@@ -16,12 +16,36 @@ bedrock_runtime = boto3.client(
     endpoint_url="https://bedrock.helicone.ai/v1/us-east-1"
 )
 # print(help(type(bedrock_runtime)))
+bedrock_client = boto3.client(
+    service_name='bedrock',
+    region_name='us-east-1',
+)
+# print(f"{type(bedrock_client)=}")
+
+"""
+'anthropic.claude-3-5-sonnet-20240620-v1:0'
+'anthropic.claude-3-5-haiku-20241022-v1:0'
+'anthropic.claude-3-7-sonnet-20250219-v1:0'
+"""
+# model_id = 'meta.llama3-2-3b-instruct-v1:0'
+# print(json.dumps(bedrock_client.get_foundation_model(modelIdentifier=model_id), indent=2))
 
 bedrock_langchain = init_chat_model(
-    "anthropic.claude-3-5-sonnet-20240620-v1:0", 
+    "us.anthropic.claude-3-5-haiku-20241022-v1:0", 
     model_provider="bedrock_converse", 
     region_name='us-east-1',
 )
+
+'''
+# https://python.langchain.com/docs/how_to/streaming/
+chunks = []
+for chunk in bedrock_langchain.stream([
+    {"role": "user", "content": "What is the capital of France?"},
+    {"role": "assistant", "content": "The capital of France is"},
+], temperature=0, max_tokens=550, performanceConfig={"latency": "optimized"}):
+    chunks.append(chunk)
+    print(chunk.content, end="\n", flush=True)
+'''
 
 event_system = bedrock_runtime.meta.events
 
@@ -112,6 +136,41 @@ def claude_call(bedrock: botocore.client,
     )
 
     return json.loads(response['body'].read().decode('utf-8'))
+
+
+'''
+# https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-runtime/client/invoke_model_with_response_stream.html
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-invoke.html#inference-examples-stream
+def claude_call_stream(bedrock: botocore.client,
+                        system_message: str,
+                        query: str,
+                        model_id='us.anthropic.claude-3-5-sonnet-20240620-v1:0'):
+    
+    body = json.dumps({
+        'prompt': '\n\nHuman: write an essay for living on mars in 1000 words\n\nAssistant:',
+        'max_tokens_to_sample': 4000
+    })
+      
+
+    response = bedrock.invoke_model_with_response_stream(
+        body=body,
+        modelId=model_id,
+    )
+
+    stream = response['body']
+    if stream:
+        for event in stream:
+            chunk = event.get('chunk')
+            if chunk:
+                print(json.loads(chunk.get('bytes').decode()))
+
+claude_call_stream(
+    bedrock_runtime, 
+    "You are a helpful assistant that translates English to French. Translate the user sentence.", 
+    "I love programming."
+)
+'''
 
 
 # # -----------------------------------------------------------------------------
